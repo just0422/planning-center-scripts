@@ -32,6 +32,7 @@ I was doing some digging around FellowshipOne and was able to export people info
 All of the **bold** colums are important and should be remembered for later.
 
 As you can see, most of the other columns are useless. Your task is to translate the important columns from this FellowshipOne file into a nice clean Planning Center file. Use the following mapping:
+
 | FellowshipOne Field | Planning Center Field | Format |
 |--|--|--|
 | Individual_ID | FellowshipOne ID | Any Text |
