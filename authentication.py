@@ -1,4 +1,3 @@
-#from requests_oauthlib import OAuth1Session
 import urllib
 import json
 import requests
@@ -47,3 +46,11 @@ class F1API(OAuth1Session):
         # Create a session that will be used for every following request
         session = OAuth1Session (clientKey, clientSecret, oauth_token, oauth_tokensecret)
         self.session = session
+
+    def get(self, endpoint, urlParams, **kwargs):
+        for key in urlParams:
+            path = path.replace('{{{}}}'.format(key), str(urlParams[key]))
+	request_url = "%s%s" % (self.baseUrl, self.clean_endpoint(endpoint))
+
+	return self.session.get(request_url, header_auth=True, headers={"Accept": "application/json"}, **kwargs)
+
