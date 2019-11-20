@@ -30,9 +30,9 @@ class F1API(OAuth1Session):
 
         # Setup OAuth1 Service to retrive Request Tokens
         service = OAuth1Service (
-           consumer_key = client_key,
-           consumer_secret = client_secret,
-           request_token_url = "%s/v1/PortalUser/AccessToken" % self.baseUrl
+           consumer_key = clientKey,
+           consumer_secret = clientSecret,
+           request_token_url = "%sv1/PortalUser/AccessToken" % self.baseUrl
         )
         
         # Fetch tokens from fellowship one
@@ -49,8 +49,8 @@ class F1API(OAuth1Session):
 
     def get(self, endpoint, urlParams, **kwargs):
         for key in urlParams:
-            path = path.replace('{{{}}}'.format(key), str(urlParams[key]))
-	request_url = "%s%s" % (self.baseUrl, self.clean_endpoint(endpoint))
+            endpoint= endpoint.replace('{{{}}}'.format(key), str(urlParams[key]))
+        request_url = "%s%s" % (self.baseUrl, endpoint)
 
-	return self.session.get(request_url, header_auth=True, headers={"Accept": "application/json"}, **kwargs)
+        return self.session.get(request_url, header_auth=True, headers={"Accept": "application/json"}, **kwargs)
 
