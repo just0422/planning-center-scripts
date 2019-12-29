@@ -22,7 +22,7 @@ class F1API(OAuth1Session):
         :type password: string"""
 
         # CT fellowshipone base URL
-        self.baseUrl = "https://christny.staging.fellowshiponeapi.com/"
+        self.baseUrl = "https://christny.staging.fellowshiponeapi.com"
 
         # Hash credentials
         credential_string = "{} {}".format(username, password)
@@ -36,10 +36,14 @@ class F1API(OAuth1Session):
            request_token_url="%s/v1/PortalUser/AccessToken" % self.baseUrl
         )
 
+        print(credentials)
+
         # Fetch tokens from fellowship one
         tokens = service.get_raw_request_token(data=credentials)
         tokens_content = urllib.parse.parse_qs(tokens.content)
 
+        print(tokens)
+        print(tokens_content)
         # Parse Ouath Request token and Secret
         oauth_token = tokens_content[b'oauth_token'][0].decode()
         oauth_tokensecret = tokens_content[b'oauth_token_secret'][0].decode()
@@ -53,11 +57,11 @@ class F1API(OAuth1Session):
         )
         self.session = session
 
-    def get(self, endpoint, urlParams, **kwargs):
+    def get(self, endpoint, urlParams=[], **kwargs):
         for key in urlParams:
             urlParam = str(urlParams[key])
             endpoint = endpoint.replace('{{{}}}'.format(key), urlParam)
-        request_url = "%s%s" % (self.baseUrl, self.clean_endpoint(endpoint))
+        request_url = "%s%s" % (self.baseUrl, endpoint)
 
         return self.session.get(
                 request_url,
