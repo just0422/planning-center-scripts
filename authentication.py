@@ -55,8 +55,14 @@ class F1API(OAuth1Session):
 
     def get(self, endpoint, urlParams, **kwargs):
         for key in urlParams:
-            endpoint = endpoint.replace('{{{}}}'.format(key), str(urlParams[key]))
+            urlParam = str(urlParams[key])
+            endpoint = endpoint.replace('{{{}}}'.format(key), urlParam)
         request_url = "%s%s" % (self.baseUrl, self.clean_endpoint(endpoint))
 
-        return self.session.get(request_url, header_auth=True, headers={"Accept": "application/json"}, **kwargs)
+        return self.session.get(
+                request_url,
+                header_auth=True,
+                headers={"Accept": "application/json"},
+                **kwargs
+        )
 
