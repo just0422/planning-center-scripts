@@ -36,14 +36,10 @@ class F1API(OAuth1Session):
            request_token_url="%s/v1/PortalUser/AccessToken" % self.baseUrl
         )
 
-        print(credentials)
-
         # Fetch tokens from fellowship one
         tokens = service.get_raw_request_token(data=credentials)
         tokens_content = urllib.parse.parse_qs(tokens.content)
 
-        print(tokens)
-        print(tokens_content)
         # Parse Ouath Request token and Secret
         oauth_token = tokens_content[b'oauth_token'][0].decode()
         oauth_tokensecret = tokens_content[b'oauth_token_secret'][0].decode()
