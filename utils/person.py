@@ -1,5 +1,7 @@
 import string
 
+from datetime import datetime
+
 
 class Person:
     """Representation of a person from F1 using the SQLite representation"""
@@ -35,3 +37,10 @@ class Person:
             any(char in set(invalid_chars) for char in word) or
             len(word.split(' ')) > 3
         )
+
+    def get_dob_yyyy_mm_dd_format(self):
+        if len(self.dob) == 0:
+            return '1900-01-01'
+
+        dob = datetime.strptime(self.dob, '%m/%d/%y')
+        return dob.strftime('%Y-%m-%d')

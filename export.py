@@ -59,6 +59,32 @@ def is_a_duplicate(person, rows, index):
     return False
 
 
+def try_to_find_person_in_pco(person):
+    people_base = pco.people.people.get_full_endpoint_url()
+    base_params = [
+        "where[first_name]=" + person.first_name,
+        "where[last_name]=" + person.last_name
+    ]
+
+    individual_params = [
+        "where[birthdate]=" + person.get_dob_yyyy_mm_dd_format(),
+        "where[search_name_or_email_or_phone_number]=" + person.pref_phone,
+        "where[search_name_or_email_or_phone_number]=" + person.mobile_phone,
+        "where[search_name_or_email_or_phone_number]=" + person.pref_email,
+        "where[search_name_or_email_or_phone_number]=" + person.email
+    ]
+
+    for param in individual_params:
+        url_params = base_params + [param]
+
+        pco_url = "{}?{}".format(people_base, '&'.join(url_params))
+        print(pco_url)
+        pco_person = pco.people.people.get_by_url(pco_url)
+
+        print(pco_person)
+        sys.exit(0)
+
+
 if __name__ == '__main__':
     try:
         conn = create_connection("data_files/normal.db")
@@ -89,6 +115,8 @@ if __name__ == '__main__':
                 continue
 
             valid += 1
+
+            person = try_to_find_person_in_pco(person)
 
         print('\n\n')
         print("Valid profiles: " + str(valid))
