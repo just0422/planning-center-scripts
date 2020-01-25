@@ -3,7 +3,7 @@ import string
 from datetime import datetime
 
 
-class Person:
+class PersonF1:
     """Representation of a person from F1 using the SQLite representation"""
     def __init__(self, obj):
         self.id = obj[0]

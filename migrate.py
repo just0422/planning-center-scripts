@@ -1,16 +1,9 @@
 #!/usr/local/bin/python3
-import pypco
 import sqlite3
-import sys
+import utils.pco as pco
 
 from sqlite3 import Error
-from utils.person import Person
-
-
-pco = pypco.PCO(
-        "",
-        ""
-    )
+from utils.person import PersonF1
 
 
 def create_connection(db_file):
@@ -38,7 +31,7 @@ def is_a_duplicate(person, rows, index):
         if row == check_row:
             return False
 
-        check_row_person = Person(check_row)
+        check_row_person = PersonF1(check_row)
 
         # Skip if the name is different
         if person.first_name != check_row_person.first_name:
@@ -59,64 +52,49 @@ def is_a_duplicate(person, rows, index):
     return False
 
 
-def try_to_find_person_in_pco(person):
-    people_base = pco.people.people.get_full_endpoint_url()
-    base_params = [
-        "where[first_name]=" + person.first_name,
-        "where[last_name]=" + person.last_name
-    ]
-
-    individual_params = [
-        "where[birthdate]=" + person.get_dob_yyyy_mm_dd_format(),
-        "where[search_name_or_email_or_phone_number]=" + person.pref_phone,
-        "where[search_name_or_email_or_phone_number]=" + person.mobile_phone,
-        "where[search_name_or_email_or_phone_number]=" + person.pref_email,
-        "where[search_name_or_email_or_phone_number]=" + person.email
-    ]
-
-    for param in individual_params:
-        url_params = base_params + [param]
-
-        pco_url = "{}?{}".format(people_base, '&'.join(url_params))
-        print(pco_url)
-        pco_person = pco.people.people.get_by_url(pco_url)
-
-        print(pco_person)
-        sys.exit(0)
-
-
 if __name__ == '__main__':
     try:
+        # Connect to the database
         conn = create_connection("data_files/normal.db")
 
+        # Query the DB
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM people")
-
         rows = cursor.fetchall()
 
+        # Setup counters for metrics
         valid = 0
         lap = 0
         dups = 0
         names = 0
 
+        # Iterate over results
         for row in rows[1:]:
-            person = Person(row)
+            # Objectify the person
+            person_f1 = PersonF1(row)
 
             lap += 1
-            sys.stdout.write('\rProfile Count: {0}'.format(lap))
-            sys.stdout.flush()
+            print('\rProfile Count: {0}'.format(lap))
 
-            if person.has_a_bad_name():
+            # Check for a bad first or last name
+            if person_f1.has_a_bad_name():
                 names += 1
                 continue
 
-            if is_a_duplicate(person, rows, lap):
+            # Check for a duplicate
+            if is_a_duplicate(person_f1, rows, lap):
                 dups += 1
                 continue
 
+            # If it reach here, the person's profile is valid
             valid += 1
 
-            person = try_to_find_person_in_pco(person)
+            person_pco = pco.find_person(person_f1)
+
+            if person_pco:
+                pco.create_new_person(person_f1)
+            else:
+                update_new_person(person_pco, person_f1)
 
         print('\n\n')
         print("Valid profiles: " + str(valid))
