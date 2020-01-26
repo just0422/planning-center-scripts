@@ -1,6 +1,16 @@
+import json
 import string
+import os
 
 from datetime import datetime
+from .pyf1 import F1API
+
+f1 = F1API(
+        clientKey=os.environ["F1_KEY_P"],
+        clientSecret=os.environ["F1_SECRET_P"],
+        username=os.environ["F1_USER"],
+        password=os.environ["F1_PASS"]
+    )
 
 
 class PersonF1:
@@ -44,3 +54,11 @@ class PersonF1:
 
         dob = datetime.strptime(self.dob, '%m/%d/%y')
         return dob.strftime('%Y-%m-%d')
+
+    def get_attributes(self):
+        response = f1.get("/v1/People/{0}/Attributes.json".format(self.id))
+
+        attributes = response.decode('utf8')
+        attributes = json.loads(attributes)
+
+        return attributes

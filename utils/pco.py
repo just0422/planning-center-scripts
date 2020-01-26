@@ -3,16 +3,16 @@ import os
 
 
 pco = pypco.PCO(
-        os.environ("PCO_KEY"),
-        os.environ("PCO_SECRET")
+        os.environ["PCO_KEY"],
+        os.environ["PCO_SECRET"]
     )
 
 
 def find_person(person):
     # These go out with every request as a baseline for finding a person
     base_where = {
-        "first_name": person.first_name,
-        "last_name": person.last_name
+        "where[first_name]": person.first_name,
+        "where[last_name]": person.last_name
     }
 
     # Each of these entries, paired with the baseline info should be unique and
@@ -27,16 +27,15 @@ def find_person(person):
 
     people_gathered = []
     for key, value in where_queries.items():
+        if len(value) == 0:
+            continue
+
         # Build where params
         where = base_where
-        where[key[:-1]] = value
+        where[f"where[{key[:-1]}]"] = value
 
         # Send the request out
-        possible_people = pco.people.people.list(where=where)
-
-        # Continue of no one returns
-        if len(possible_people) == 0:
-            continue
+        possible_people = pco.iterate('/people/v2/people', **where)
 
         # Add someone if no one exists
         for person in possible_people:
@@ -50,8 +49,18 @@ def find_person(person):
 
 
 def create_new_person(person_f1):
-    new_person = pco.new(pypco.models.people.Person)
+    new_person = {
+        'first_name': person_f1.first_name,
+        'last_name': person_f1.last_name
+    }
+
+
 
     new_person.first_name = person_f1.first_name
     new_person.last_name = person_f1.last_name
-    new_person.
+
+    if person_f1.get_dob_yyyy_mm_dd_format() != '':
+        new_person.birthdate = person_f1.get_dob_yyyy_mm_dd_format()
+
+#    if person_f1.pref_phone != '':
+#        new_person.

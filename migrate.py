@@ -1,9 +1,10 @@
 #!/usr/local/bin/python3
+import sys
 import sqlite3
 import utils.pco as pco
 
 from sqlite3 import Error
-from utils.person import PersonF1
+from utils.fellowshipone import PersonF1
 
 
 def create_connection(db_file):
@@ -55,7 +56,7 @@ def is_a_duplicate(person, rows, index):
 if __name__ == '__main__':
     try:
         # Connect to the database
-        conn = create_connection("data_files/normal.db")
+        conn = create_connection("data_files/test.db")
 
         # Query the DB
         cursor = conn.cursor()
@@ -69,7 +70,7 @@ if __name__ == '__main__':
         names = 0
 
         # Iterate over results
-        for row in rows[1:]:
+        for row in rows:
             # Objectify the person
             person_f1 = PersonF1(row)
 
@@ -89,12 +90,19 @@ if __name__ == '__main__':
             # If it reach here, the person's profile is valid
             valid += 1
 
+            # Attempt to find the person in planning center
+            #   (Returns none if they don't exist)
             person_pco = pco.find_person(person_f1)
 
+            sys.exit()
+
             if person_pco:
-                pco.create_new_person(person_f1)
+                pco.update_new_person(person_pco, person_f1)
             else:
-                update_new_person(person_pco, person_f1)
+                pco.create_new_person(person_f1)
+
+            # Get attributes from F1
+            attributes = person_f1.get_attributes()
 
         print('\n\n')
         print("Valid profiles: " + str(valid))
