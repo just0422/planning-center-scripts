@@ -49,18 +49,20 @@ def find_person(person):
 
 
 def create_new_person(person_f1):
-    new_person = {
+    template = {
         'first_name': person_f1.first_name,
         'last_name': person_f1.last_name
     }
 
-
-
-    new_person.first_name = person_f1.first_name
-    new_person.last_name = person_f1.last_name
-
     if person_f1.get_dob_yyyy_mm_dd_format() != '':
-        new_person.birthdate = person_f1.get_dob_yyyy_mm_dd_format()
+        template['birthdate'] = person_f1.get_dob_yyyy_mm_dd_format()
+
+    payload = pco.template('Person', template)
+    new_person = pco.post('/people/v2/people', payload)
+
+    self.add_new_details()
+
+def add_new_details():
 
 #    if person_f1.pref_phone != '':
 #        new_person.

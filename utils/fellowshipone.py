@@ -29,6 +29,9 @@ class PersonF1:
         self.pref_email = (obj[14] or '').strip()
         self.email = (obj[15] or '').strip()
 
+    def full_name(self):
+        return f"{self.first_name} {self.last_name}"
+
     def has_a_bad_name(self):
         return (self.is_a_bad_word(self.first_name) or
                 self.is_a_bad_word(self.last_name))

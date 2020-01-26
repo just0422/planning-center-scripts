@@ -1,10 +1,12 @@
 #!/usr/local/bin/python3
+import logging
 import sys
 import sqlite3
 import utils.pco as pco
 
 from sqlite3 import Error
 from utils.fellowshipone import PersonF1
+from utils.rainbow_logger import RainbowLoggingHandler
 
 
 def create_connection(db_file):
@@ -12,9 +14,9 @@ def create_connection(db_file):
     conn = None
     try:
         conn = sqlite3.connect(db_file)
-        print("Connected to " + db_file)
+        logging.info("Connected to " + db_file)
     except Error as e:
-        print(e)
+        logging.error(e)
 
     return conn
 
@@ -54,11 +56,32 @@ def is_a_duplicate(person, rows, index):
 
 
 if __name__ == '__main__':
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+    handler = RainbowLoggingHandler(sys.stdout)
+    formatter = logging.Formatter(
+                    "[%(asctime)s] "
+                    "%(levelname)s:%(funcName)s:%(lineno)d ---"
+                    "%(message)s"
+                )
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+
+    """
+    logging.basicConfig(
+        format="[%(asctime)s] "
+               "%(levelname)s:%(funcName)s:%(lineno)d ---"
+               "%(message)s",
+        datefmt='%m/%d/%Y %I:%M:%S %p'
+    )
+    """
+
     try:
         # Connect to the database
         conn = create_connection("data_files/test.db")
 
         # Query the DB
+        logging.info("Pulling data from database")
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM people")
         rows = cursor.fetchall()
@@ -75,20 +98,27 @@ if __name__ == '__main__':
             person_f1 = PersonF1(row)
 
             lap += 1
-            print('\rProfile Count: {0}'.format(lap))
+            logging.info('Profile Count: {0}'.format(lap))
 
             # Check for a bad first or last name
             if person_f1.has_a_bad_name():
                 names += 1
+                logging.info(
+                    f"{person_f1.full_name()} has a bad name"
+                )
                 continue
 
             # Check for a duplicate
             if is_a_duplicate(person_f1, rows, lap):
                 dups += 1
+                logging.info(
+                    f"{person_f1.full_name()} is a duplicate"
+                )
                 continue
 
             # If it reach here, the person's profile is valid
             valid += 1
+            logging.info(f"{person_f1.full_name()} is valid")
 
             # Attempt to find the person in planning center
             #   (Returns none if they don't exist)
@@ -97,18 +127,20 @@ if __name__ == '__main__':
             sys.exit()
 
             if person_pco:
+                logging.info("Updating {person_f1.full_name()} in Planning Center")
                 pco.update_new_person(person_pco, person_f1)
             else:
+                logging.info("Creating {person_f1.full_name()} in Planning Center")
                 pco.create_new_person(person_f1)
 
             # Get attributes from F1
             attributes = person_f1.get_attributes()
 
-        print('\n\n')
-        print("Valid profiles: " + str(valid))
-        print("Duplicates: " + str(dups))
-        print("Bad Names: " + str(names))
-        # print("Bad Last Names: " + str(lasts))
+        logging.info('\n\n')
+        logging.info("Valid profiles: " + str(valid))
+        logging.info("Duplicates: " + str(dups))
+        logging.info("Bad Names: " + str(names))
+        # logging.info("Bad Last Names: " + str(lasts))
     finally:
         if conn:
             conn.close()
