@@ -51,7 +51,6 @@ def find_person(person):
 
     return people_gathered[0]
 
-
 def send_person_to_pco(person_f1, person_pco):
     template = {
         'first_name': person_f1.first_name,
@@ -66,13 +65,10 @@ def send_person_to_pco(person_f1, person_pco):
     person = None
     if person_pco:
         person = pco.post('/people/v2/people', payload)
-    else
-        person = pco.patch('/people/v2/people/{person_pco['data']['id']}, payload)
+    else:
+        person = pco.patch('/people/v2/people/{person_pco["data"]["id"]}', payload)
 
     self.add_new_details(person_f1, new_person)
-
-def update_new_person(person_pco, person_f1):
-    
 
 def add_new_details(person_f1, person_pco):
     id = person_pco['data']['id']
@@ -120,9 +116,9 @@ def add_email(id, email_f1):
 
     resp = pco.post(f'/people/v2/people/{id}/emails', payload)
 
-self add_address(id, address_f1):
+def add_address(id, address_f1):
     address_f1 = parser.parse_addres(address_f1)
-    address_f1_street = {0} {1} {2} {3}".format(
+    address_f1_street = "{0} {1} {2} {3}".format(
                                             address_f1.house_number,
                                             address_f1.street_prefix, 
                                             address_f1.street,
