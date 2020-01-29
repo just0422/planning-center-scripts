@@ -126,12 +126,9 @@ if __name__ == '__main__':
 
             sys.exit()
 
-            if person_pco:
-                logging.info("Updating {person_f1.full_name()} in Planning Center")
-                pco.update_new_person(person_pco, person_f1)
-            else:
-                logging.info("Creating {person_f1.full_name()} in Planning Center")
-                pco.create_new_person(person_f1)
+            # Sending person to PCO
+	    logging.info("Sending {person_f1.full_name()} in Planning Center")
+            pco.send_person_to_pco(person_f1, person_pco)
 
             # Get attributes from F1
             attributes = person_f1.get_attributes()
