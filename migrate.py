@@ -103,13 +103,13 @@ if __name__ == '__main__':
             # Check for a bad first or last name
             if person_f1.has_a_bad_name():
                 names += 1
-                logging.info(f"{person_f1.full_name()} has a bad name")
+                logging.warning(f"{person_f1.full_name()} has a bad name")
                 continue
 
             # Check for a duplicate
             if is_a_duplicate(person_f1, rows, lap):
                 dups += 1
-                logging.info(f"{person_f1.full_name()} is a duplicate")
+                logging.warning(f"{person_f1.full_name()} is a duplicate")
                 continue
 
             # If it reach here, the person's profile is valid
