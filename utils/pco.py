@@ -1,6 +1,7 @@
-import address
 import phonenumbers
 import pypco
+import requests
+import streetaddress
 import os
 
 
@@ -9,7 +10,7 @@ pco = pypco.PCO(
         os.environ["PCO_SECRET"]
     )
 
-parser = address.AddressParser()
+parser = streetaddress.StreetAddressParser()
 
 
 def find_person(person):
@@ -117,34 +118,43 @@ def add_email(id, email_f1):
     resp = pco.post(f'/people/v2/people/{id}/emails', payload)
 
 def add_address(id, address_f1):
-    address_f1 = parser.parse_addres(address_f1)
-    address_f1_street = "{0} {1} {2} {3}".format(
-                                            address_f1.house_number,
-                                            address_f1.street_prefix, 
-                                            address_f1.street,
-                                            address_f1.street_suffix
-                                        )
-
     address_exists = False
+
+    url_f1 = "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress"
+    params_f1 = {
+        "address": address_f1,
+        "benchmark": "Public_AR_Current",
+        "format": "json"
+    }
+
+    address_f1_data = requests.get(url=url_f1, params=params_f1)
 
     for address in pco.iterate(f'/people/v2/people/{id}/addresses'):
         address = address['data']['attributes']
 
-        street = address['street'] == address_f1_street
-        city = address['city'] == address_f1.city
-        state = address['state'] == address_f1.state
-        zip = address['zip'] == address_f1.zip
+        url_pco = "https://geocoding.geo.census.gov/geocoder/locations/address"
+        params_pco = {
+            "benchmark": "Public_AR_Current",
+            "format": "json",
+            "street": address["street"],
+            "city": address["city"],
+            "state": address["state"],
+            "zip": address["zip"]
+        }
+        
+        address_pco_data = requets.get(url=url_pco, params=params_pco)
 
         if street and city and state and zip:
             return
-
+    
+    parsed_address = parser.parse(address_f1)
     payload = pco.template(
         "Address",
         {
-            'street': address_f1_street,
-            'city': address_f1.city,
-            'state': address_f1.state,
-            'zip': address_f1.zip
+            'street': parsed_address['house'] + " " + parsed_address['street_full'],
+            'city': parsed_address['city'],
+            'state': parsed_address['state'],
+            'zip': parsed_address['zip']
         }
     )
 
