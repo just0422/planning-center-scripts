@@ -71,12 +71,12 @@ def find_person(person):
 
 
 def send_person_to_pco(person_f1, person_pco):
-    logger.debug(f"Building template for {person_f1.full_name()}"
+    logger.debug(f"Building template for {person_f1.full_name()}")
     template = {
         'last_name': person_f1.last_name,
         'gender': person_f1.gender[0],
     }
-    
+
     # Add a 'given name' if someone has a "goes by name"
     if len(person_f1.goes_by_name) > 0:
         template['first_name'] = person_f1.goes_by_name
@@ -99,10 +99,10 @@ def send_person_to_pco(person_f1, person_pco):
 
     person = None
     if person_pco:
-        logger.warning(f"Creating {person_f1.full_name()")
+        logger.warning(f"Creating {person_f1.full_name()}")
         person = pco.post('/people/v2/people', payload)
     else:
-        logger.warning(f"Updating {person_f1.full_name()")
+        logger.warning(f"Updating {person_f1.full_name()}")
         person = pco.patch('/people/v2/people/{person_pco["data"]["id"]}', payload)
         # self.set_inactive(person)
 
@@ -120,7 +120,7 @@ def send_person_to_pco(person_f1, person_pco):
 
     logging.info("Adding addresses")
     for address in person_f1.addresses:
-        add_address(id, address1, person_exists)
+        add_address(id, address, person_exists)
 
 
 def add_phone_number(id, phone_f1, person_exists):
@@ -172,7 +172,7 @@ def add_email(id, email_f1, person_exists):
             'address': email_f1
         }
     )
-    
+
     # Add a new email
     return pco.post(f'/people/v2/people/{id}/emails', payload)
 
@@ -184,7 +184,7 @@ def add_address(id, address_f1, person_exists):
     if person_exists:
         # Build US Gov geo code URL
         url = "https://geocoding.geo.census.gov/geocoder/locations/address"
-        params_f1  = {
+        params_f1 = {
             "benchmark": "Public_AR_Current",
             "format": "json",
             "street": address_f1["address1"],
@@ -209,7 +209,7 @@ def add_address(id, address_f1, person_exists):
                 "state": address["state"],
                 "zip": address["zip"]
             }
-           
+
             # Send the request
             address_pco_data = requests.get(url=url, params=params_pco)
 
@@ -232,8 +232,9 @@ def add_address(id, address_f1, person_exists):
     # Add the new address to planning center
     return pco.post(f'/people/v2/people/{id}/addresses', payload)
 
+
 def compare_addresses(self, addrs_f1, addrs_pco):
-    radius = 6371 # km
+    radius = 6371  # km
 
     for addr_f1 in addrs_f1['result']['addressMatches']:
         lat_f1 = addr_f1['coordinates']['x']
@@ -242,13 +243,12 @@ def compare_addresses(self, addrs_f1, addrs_pco):
             lat_pco = addr_pco['coordinates']['x']
             lng_pco = addr_pco['coordanates']['y']
 
+            dlat = math.radians(lat_pco - lat_f1)
+            dlon = math.radians(lng_pco - lng_f1)
 
-            dlat = math.radians(lat_pco-lat_f1)
-            dlon = math.radians(lon_pco-lon_f1)
+            a = math.sin(dlat / 2) * math.sin(dlat / 2) + math.cos(math.radians(lat_f1)) * math.cos(math.radians(lat_pco)) * math.sin(dlon / 2) * math.sin(dlon / 2)
 
-            a = math.sin(dlat/2) * math.sin(dlat/2) + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon/2) * math.sin(dlon/2)
-
-            c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+            c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
             distance = radius * c
 
             if (distance < 100):

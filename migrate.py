@@ -57,7 +57,7 @@ def is_a_duplicate(person, rows, index):
 
 if __name__ == '__main__':
     logger = logging.getLogger()
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(logging.INFO)
     handler = RainbowLoggingHandler(sys.stdout)
     formatter = logging.Formatter(
                     "[%(asctime)s] "
