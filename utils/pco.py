@@ -215,13 +215,11 @@ def send_email(id, email_f1, person_exists):
             location = "Work"
         # If it reached here, the email doesn't exist
         # Build the request
-        payload = pco.template(
-            "Email",
-            {
-                'address': email_f1,
-                'location': location
-            }
-        )
+        template = {
+            'address': email_f1,
+            'location': location
+        }
+        payload = pco.template("Email", template)
 
         logging.info(f"Sending Email: {email_f1}")
         logging.debug(f"Email payload: {payload}")
@@ -282,16 +280,14 @@ def send_address(id, address_f1, person_exists):
 
         # If it reached here, the address doesn't exist
         # Parse the planning center address and create a template
-        payload = pco.template(
-            "Address",
-            {
-                'street': address_f1['address1'] + " " + address_f1['address2'],
-                'city': address_f1['city'],
-                'state': address_f1['state'],
-                'zip': address_f1['zip'],
-                'location': 'home'
-            }
-        )
+        template = {
+            'street': address_f1['address1'] + " " + address_f1['address2'],
+            'city': address_f1['city'],
+            'state': address_f1['state'],
+            'zip': address_f1['zip'],
+            'location': 'home'
+        }
+        payload = pco.template("Address", template)
 
         logging.info(f"Sending Address: {address_f1['address1']} {address_f1['address2']}, {address_f1['city']}, {address_f1['state']} {address_f1['zip']}")
         logging.debug(f"Email payload: {payload}")
