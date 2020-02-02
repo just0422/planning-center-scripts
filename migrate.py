@@ -34,27 +34,33 @@ def compare(first, second):
     )
 
 
+def compareArrays(first, second):
+    same = False
+    for f in first:
+        for s in second:
+            if compare(f, s):
+                same = True
+    return same
+
+
 def is_a_duplicate(person, rows, index):
     for check_row in rows[index - 20: index + 20]:
-        if row == check_row:
+        check_person = PersonF1(check_row)
+        if person.id == check_person.id:
+            logger.error("Found Her")
             return False
 
-        check_row_person = PersonF1(check_row)
-
         # Skip if the name is different
-        if person.first_name != check_row_person.first_name:
+        if person.first_name != check_person.first_name:
             continue
-        if person.last_name != check_row_person.last_name:
+        if person.last_name != check_person.last_name:
             continue
 
         # Check DOB, address, email, or mobile_phone
-        if (compare(person.dob, check_row_person.dob) or
-                compare(person.address1, check_row_person.address1) or
-                compare(person.address2, check_row_person.address2) or
-                compare(person.mobile_phone, check_row_person.mobile_phone) or
-                compare(person.pref_phone, check_row_person.pref_phone) or
-                compare(person.email, check_row_person.email) or
-                compare(person.pref_email, check_row_person.pref_email)):
+        if (compare(person.dob, check_person.dob) or
+                compareArrays(person.addresses, check_person.addresses) or
+                compareArrays(person.phones, check_person.phones) or
+                compareArrays(person.emails, check_person.emails)):
             return True
 
     return False
@@ -108,7 +114,6 @@ if __name__ == '__main__':
         attributes_to_fields = {}
         for field in field_mappings:
             attributes_to_fields[field[0]] = field
-            logger.error(field)
 
         # Iterate over results
         for person in people:

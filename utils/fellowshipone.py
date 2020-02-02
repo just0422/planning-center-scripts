@@ -27,9 +27,6 @@ class PersonF1:
         self.phones = []
         self.addresses = []
 
-        logging.error(f1.get(f'/v1/People/{self.id}/Attributes.json').content)
-        sys.exit()
-
         logging.info(f"Attempting to retrieve profile ({self.id})")
         self.get_details(self.id)
         self.get_communications(self.id)
