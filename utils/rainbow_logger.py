@@ -43,7 +43,7 @@ class RainbowLoggingHandler(ColorizingStreamHandler):
     date_format = "%H:%m:%S"
 
     #: How many characters reserve to function name logging
-    who_padding = 22
+    who_padding = 40
 
     #: Show logger name
     show_name = True
@@ -93,7 +93,7 @@ class RainbowLoggingHandler(ColorizingStreamHandler):
             self.reset,
             "] ",
             self.get_color("white", None, True) if self.show_name else "",
-            "%(name)s " if self.show_name else "",
+            "%(module)s " if self.show_name else "",
             "%(padded_who)s",
             self.reset,
             " ",
@@ -116,8 +116,7 @@ class RainbowLoggingHandler(ColorizingStreamHandler):
 
         # We need to calculate padding length manualy
         # as color codes mess up string length based calcs
-        unformatted_who = getattr(record, "funcName", "") + "()" + \
-            ":" + str(getattr(record, "lineno", 0))
+        unformatted_who = getattr(record, "module", "") + getattr(record, "funcName", "") + "()" + ":" + str(getattr(record, "lineno", 0))
 
         if len(unformatted_who) < self.who_padding:
             spaces = " " * (self.who_padding - len(unformatted_who))

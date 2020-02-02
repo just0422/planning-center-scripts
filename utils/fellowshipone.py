@@ -2,6 +2,7 @@ import json
 import logging
 import string
 import os
+import sys
 
 from datetime import datetime
 from .pyf1 import F1API
@@ -17,15 +18,19 @@ f1 = F1API(
 
 
 class PersonF1:
-    """Representation of a person from F1 using the SQLite representation"""
-    def __init__(self, obj):
-        self.id = obj[0]
-        self.household_id = obj[1]
+    """Representation of a person from FellowshipOne"""
+    def __init__(self, person):
+        self.id = person[0]
+        self.household_id = person[1]
 
         self.emails = []
         self.phones = []
         self.addresses = []
 
+        logging.error(f1.get(f'/v1/People/{self.id}/Attributes.json').content)
+        sys.exit()
+
+        logging.info(f"Attempting to retrieve profile ({self.id})")
         self.get_details(self.id)
         self.get_communications(self.id)
         self.get_addresses(self.id)
@@ -60,7 +65,7 @@ class PersonF1:
         return dob.strftime('%Y-%m-%d')
 
     def get_details(self, person_id):
-        logging.debug("Getting Details")
+        logging.info("Getting Details")
         # Get person from F1
         response = f1.get(f"/v1/People/{person_id}.json")
 
@@ -69,6 +74,8 @@ class PersonF1:
         person = json.loads(person)
         person = person["person"]
 
+        logging.debug(person)
+
         self.first_name = person["firstName"]
         self.middle_name = person["middleName"]
         self.last_name = person["lastName"]
@@ -76,9 +83,10 @@ class PersonF1:
         self.gender = person["gender"]
         self.dob = person["dateOfBirth"]
         self.marital_status = person["maritalStatus"]
+        self.status = person["status"]["name"]
 
     def get_communications(self, person_id):
-        logging.debug("Getting Communications")
+        logging.info("Getting Communications")
         # Get communications from F1
         response = f1.get(f"/v1/People/{person_id}/Communications.json")
 
@@ -86,21 +94,30 @@ class PersonF1:
         communications = response.content.decode('utf8')
         communications = json.loads(communications)
 
+        logging.debug(communications)
+
         # Pull out the array
         communicationsArr = communications["communications"]["communication"]
 
         # Add each communication
         for communication in communicationsArr:
-            communication_type = communication["communicationGeneralType"]
+            communication_gen_type = communication["communicationGeneralType"]
             communication_value = communication["communicationValue"]
+            communication_type = communication["communicationType"]["name"]
 
-            if communication_type == "Telephone":
-                self.phones.append(communication_value)
-            if communication_type == "Email":
-                self.emails.append(communication_value)
+            if communication_gen_type == "Telephone":
+                self.phones.append({
+                    "number": communication_value,
+                    "type": communication_type
+                })
+            if communication_gen_type in ["Email", "Home Email"]:
+                self.emails.append({
+                    "email": communication_value,
+                    "type": communication_type
+                })
 
     def get_addresses(self, person_id):
-        logging.debug("Getting Addresses")
+        logging.info("Getting Addresses")
         # Get Addresses from F1
         response = f1.get(f"/v1/People/{person_id}/Addresses.json")
 
@@ -111,22 +128,25 @@ class PersonF1:
         # Pull out the array
         addressesArr = addresses["addresses"]["address"]
 
+        logging.debug(addresses)
+
         # Add each address
         for address in addressesArr:
             address_obj = {}
 
-            address_obj["address1"] = address["address1"]
-            address_obj["address2"] = address["address2"]
-            address_obj["city"] = address["city"]
-            address_obj["zip"] = address["postalCode"]
-            address_obj["state"] = address["stProvince"]
+            address_obj["address1"] = address["address1"] or ''
+            address_obj["address2"] = address["address2"] or ''
+            address_obj["city"] = address["city"] or ''
+            address_obj["zip"] = address["postalCode"] or ''
+            address_obj["state"] = address["stProvince"] or ''
 
             self.addresses.append(address_obj)
 
     def get_attributes(self):
-        response = f1.get("/v1/People/{self.id}/Attributes.json")
+        attributes = f1.get("/v1/People/{self.id}/Attributes.json")
 
-        attributes = response.decode('utf8')
+        attributes = attributes.content
+        attributes = attributes.decode('utf8')
         attributes = json.loads(attributes)
 
-        return attributes
+        return attributes["attirbutes"]["attribute"]

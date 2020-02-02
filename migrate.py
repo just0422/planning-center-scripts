@@ -1,4 +1,5 @@
 #!/usr/local/bin/python3
+import argparse
 import logging
 import sys
 import sqlite3
@@ -7,6 +8,10 @@ import utils.pco as pco
 from sqlite3 import Error
 from utils.fellowshipone import PersonF1
 from utils.rainbow_logger import RainbowLoggingHandler
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument("-d", dest="debug", action="store_true")
 
 
 def create_connection(db_file):
@@ -57,24 +62,27 @@ def is_a_duplicate(person, rows, index):
 
 if __name__ == '__main__':
     logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
+
+    args = parser.parse_args()
+    if args.debug:
+        logger.setLevel(logging.DEBUG)
+    else:
+        logger.setLevel(logging.INFO)
+
+    # Log Pretty Output to the terminal
     handler = RainbowLoggingHandler(sys.stdout)
     formatter = logging.Formatter(
-                    "[%(asctime)s] "
-                    "%(levelname)s:%(funcName)s:%(lineno)d ---"
+                    "[%(asctime)s] - %(levelname)s - "
+                    "%(filename)s:%(funcName)s:%(lineno)d --- "
                     "%(message)s"
                 )
     handler.setFormatter(formatter)
     logger.addHandler(handler)
 
-    """
-    logging.basicConfig(
-        format="[%(asctime)s] "
-               "%(levelname)s:%(funcName)s:%(lineno)d ---"
-               "%(message)s",
-        datefmt='%m/%d/%Y %I:%M:%S %p'
-    )
-    """
+    # Log simple output to file
+    file_handler = logging.FileHandler("output.log")
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
 
     try:
         # Connect to the database
@@ -84,7 +92,7 @@ if __name__ == '__main__':
         logging.info("Pulling data from database")
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM people")
-        rows = cursor.fetchall()
+        people = cursor.fetchall()
 
         # Setup counters for metrics
         valid = 0
@@ -92,10 +100,20 @@ if __name__ == '__main__':
         dups = 0
         names = 0
 
+        # Gather Mapping for Attributes
+        cursor.execute("SELECT * FROM field_mapping")
+        field_mappings = cursor.fetchall()
+
+        # Organize Mappings
+        attributes_to_fields = {}
+        for field in field_mappings:
+            attributes_to_fields[field[0]] = field
+            logger.error(field)
+
         # Iterate over results
-        for row in rows:
+        for person in people:
             # Objectify the person
-            person_f1 = PersonF1(row)
+            person_f1 = PersonF1(person)
 
             lap += 1
             logging.info('Profile Count: {0}'.format(lap))
@@ -107,7 +125,7 @@ if __name__ == '__main__':
                 continue
 
             # Check for a duplicate
-            if is_a_duplicate(person_f1, rows, lap):
+            if is_a_duplicate(person_f1, people, lap):
                 dups += 1
                 logging.warning(f"{person_f1.full_name()} is a duplicate")
                 continue
@@ -116,18 +134,25 @@ if __name__ == '__main__':
             valid += 1
             logging.info(f"{person_f1.full_name()} is valid")
 
-            # Attempt to find the person in planning center
+            # Attempt to find the person in Planning Center
             #   (Returns none if they don't exist)
             person_pco = pco.find_person(person_f1)
 
-            sys.exit()
+            # Sending person to Planning Center
+            logging.info(f"Sending '{person_f1.full_name()}' to Planning Center")
+            person_pco = pco.send_person_to_pco(person_f1, person_pco)
 
-            # Sending person to PCO
-            logging.info("Sending {person_f1.full_name()} in Planning Center")
-            pco.send_person_to_pco(person_f1, person_pco)
-
-            # Get attributes from F1
+            logging.info(f"Retrieving {person_f1.first_name}'s attributes from FellowshipOne")
+            # Get attributes from FellowshipOne
             attributes = person_f1.get_attributes()
+
+            logging.info(f"Sending {person_f1.first_name}'s attributes to Planning Center")
+            # Send each attribute to Planning Center
+            for attribute in attributes:
+                f1_attribute_id = attribute['@id']
+
+                if f1_attribute_id in attributes_to_fields.keys():
+                    pco.send_attribute(person_pco['id'], f1_attribute_id, attribute, attributes_to_fields[f1_attribute_id])
 
         logging.info('\n\n')
         logging.info("Valid profiles: " + str(valid))
