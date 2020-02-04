@@ -47,7 +47,6 @@ def is_a_duplicate(person, rows, index):
     for check_row in rows[index - 20: index + 20]:
         check_person = PersonF1(check_row)
         if person.id == check_person.id:
-            logger.error("Found Her")
             return False
 
         # Skip if the name is different

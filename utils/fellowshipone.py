@@ -79,8 +79,9 @@ class PersonF1:
         self.goes_by_name = person["goesByName"]
         self.gender = person["gender"]
         self.dob = person["dateOfBirth"]
-        self.marital_status = person["maritalStatus"]
         self.status = person["status"]["name"]
+        if person["maritalStatus"] in ["Married", "Single", "Widowed"]:
+            self.marital_status = person["maritalStatus"]
 
     def get_communications(self, person_id):
         logging.info("Getting Communications")
