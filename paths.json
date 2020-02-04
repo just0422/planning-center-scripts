@@ -1,4 +1,0 @@
-{
-    households_show: "/v1/Households/{id}",
-    people_show: "/v1/People/{id}",
-}
