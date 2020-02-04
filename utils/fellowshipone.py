@@ -55,6 +55,9 @@ class PersonF1:
             len(word.split(' ')) > 3
         )
 
+    def has_no_contact_information(self):
+        return len(self.emails) == 0 and len(self.phones) == 0
+
     def get_dob_yyyy_mm_dd_format(self):
         if len(self.dob) == 0:
             return '1900-01-01'
