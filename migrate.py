@@ -1,8 +1,11 @@
 #!/usr/local/bin/python3
 import argparse
+import datetime
+import enlighten
 import logging
 import sys
 import sqlite3
+import time
 import utils.pco as pco
 
 from sqlite3 import Error
@@ -13,9 +16,10 @@ from utils.rainbow_logger import RainbowLoggingHandler
 parser = argparse.ArgumentParser()
 parser.add_argument("-d", dest="debug", action="store_true")
 
+logger = logging.getLogger()
+
 
 def main():
-    logger = logging.getLogger()
 
     args = parser.parse_args()
     if args.debug:
@@ -23,11 +27,15 @@ def main():
     else:
         logger.setLevel(logging.INFO)
 
+    logging.SUCCESS = 25
+    logging.addLevelName(logging.SUCCESS, 'SUCCESS')
+    setattr(logger, 'success', lambda message, *args: logger._log(logging.SUCCESS, message, args))
+
     # Log Pretty Output to the terminal
     handler = RainbowLoggingHandler(sys.stdout)
     formatter = logging.Formatter(
                     "[%(asctime)s] - %(levelname)s - "
-                    "%(filename)s:%(funcName)s:%(lineno)d --- "
+                    "%(module)s:%(funcName)s:%(lineno)d --- "
                     "%(message)s"
                 )
     handler.setFormatter(formatter)
@@ -40,20 +48,17 @@ def main():
 
     try:
         # Connect to the database
-        conn = create_connection("data_files/test.db")
+        conn = create_connection("data_files/normal.db")
 
         # Query the DB
-        logging.info("Pulling data from database")
+        logger.info("Pulling data from database")
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM people")
         people = cursor.fetchall()
 
-        # Setup counters for metrics
-        valid = 0
-        lap = 0
-        dups = 0
-        names = 0
-        empty = 0
+        # Setup Progress bar
+        manager = enlighten.get_manager()
+        get_progress = manager.counter(total=len(people[1:]), desc='Getting from F1', unit='people', color="yellow")
 
         # Gather Mapping for Attributes
         cursor.execute("SELECT * FROM field_mapping")
@@ -64,60 +69,88 @@ def main():
         for field in field_mappings:
             attributes_to_fields[field[0]] = field
 
+        people_f1 = []
         # Iterate over results
-        for person in people:
+        for person in people[1:]:
             # Objectify the person
-            person_f1 = PersonF1(person)
+            people_f1.append(PersonF1(person))
+            get_progress.update()
 
+        # Setup progress bars
+        send_progress = manager.counter(total=len(people_f1), desc='Sending to PCO', unit='people', color="red")
+        # Setup counters for metrics
+        lap = 0
+        valid = manager.counter(desc='|- Valid Profiles -', unit='people')
+        dups = manager.counter(desc='|- Duplicates -----', unit='people')
+        names = manager.counter(desc='|- Bad Names ------', unit='people')
+        empty = manager.counter(desc='|- Empty Profiles -', unit='people')
+        old = manager.counter(desc='|- Old Profiles ---', unit='people')
+        error = manager.counter(desc='|- Errors ---------', unit='people')
+
+        limit = datetime.datetime(2015, 1, 1)
+        # Iterate over results
+        for person_f1 in people_f1:
+            time.sleep(0.01)
             lap += 1
-            logging.info('Profile Count: {0}'.format(lap))
+
+            send_progress.update()
+
+            # Check to see if an error occured on retrieval
+            if person_f1.error:
+                logger.warning(f"Profile {person_f1.id} had errors")
+                error.update()
+                continue
 
             # Check for a bad first or last name
             if person_f1.has_a_bad_name():
-                names += 1
-                logging.warning(f"{person_f1.full_name()} has a bad name")
+                logger.warning(f"{person_f1.full_name()} has a bad name")
+                names.update()
+                continue
+
+            # Check for existing contact information
+            if person_f1.has_no_contact_information():
+                logger.warning(f"{person_f1.full_name()} has no contact information")
+                empty.update()
+                continue
+
+            # Check to see if the profile is too old
+            if person_f1.profile_is_too_old(limit):
+                logger.warning(f"{person_f1.full_name()} is too old")
+                old.update()
                 continue
 
             # Check for a duplicate
-            if is_a_duplicate(person_f1, people, lap):
-                dups += 1
-                logging.warning(f"{person_f1.full_name()} is a duplicate")
-                continue
-
-            if person.has_no_contact_information():
-                empty += 1
-                logging.warning(f"{person_f1.full_name()} has no contact information")
+            if is_a_duplicate(person_f1, people_f1, lap):
+                logger.warning(f"{person_f1.full_name()} is a duplicate")
+                dups.update()
                 continue
 
             # If it reach here, the person's profile is valid
-            valid += 1
-            logging.info(f"{person_f1.full_name()} is valid")
+            logger.success(f"{person_f1.full_name()} is valid")
+            valid.update()
 
             # Attempt to find the person in Planning Center
             #   (Returns none if they don't exist)
+            logger.info(f"Looking for '{person_f1.full_name()} in FellowshipOne")
             person_pco = pco.find_person(person_f1)
 
             # Sending person to Planning Center
-            logging.info(f"Sending '{person_f1.full_name()}' to Planning Center")
+            logger.info(f"Sending '{person_f1.full_name()}' to Planning Center")
             person_pco = pco.send_person_to_pco(person_f1, person_pco)
+            logger.success(f"Sent {person_f1.full_name()} to Planning Center")
 
-            logging.info(f"Retrieving {person_f1.first_name}'s attributes from FellowshipOne")
+            logger.info(f"Retrieving {person_f1.first_name}'s attributes from FellowshipOne")
             # Get attributes from FellowshipOne
             attributes = person_f1.get_attributes()
 
-            logging.info(f"Sending {person_f1.first_name}'s attributes to Planning Center")
+            logger.info(f"Sending {person_f1.first_name}'s attributes to Planning Center")
             # Send each attribute to Planning Center
             for attribute in attributes:
                 f1_attribute_id = attribute['@id']
 
                 if f1_attribute_id in attributes_to_fields.keys():
                     pco.send_attribute(person_pco['id'], f1_attribute_id, attribute, attributes_to_fields[f1_attribute_id])
-
-        logging.info('\n\n')
-        logging.info("Valid profiles: " + str(valid))
-        logging.info("Duplicates: " + str(dups))
-        logging.info("Bad Names: " + str(names))
-        logging.info("Empty Profiles: " + str(empty))
+            logger.success(f"Sent {person_f1.first_name}'s attributes to Planning Center")
     finally:
         if conn:
             conn.close()
@@ -128,33 +161,46 @@ def create_connection(db_file):
     conn = None
     try:
         conn = sqlite3.connect(db_file)
-        logging.info("Connected to " + db_file)
+        logger.info("Connected to " + db_file)
     except Error as e:
-        logging.error(e)
+        logger.error(e)
 
     return conn
 
 
 def compare(first, second):
+    logger.debug(first)
+    logger.debug(second)
     return (
         first and second and
+        isinstance(first, str) and isinstance(second, str) and
         len(first) > 0 and len(second) > 0 and
         first.lower() == second.lower()
     )
 
 
-def compareArrays(first, second):
-    same = False
-    for f in first:
-        for s in second:
-            if compare(f, s):
-                same = True
-    return same
+def compareArrayOfDicts(firstArr, secondArr):
+    for first in firstArr:
+        for second in secondArr:
+            for key in first.keys():
+                if key not in second.keys():
+                    continue
+                if key in ['city', 'state', 'zip', 'type']:
+                    continue
+
+                if compare(first[key], second[key]):
+                    return True
+    return False
 
 
-def is_a_duplicate(person, rows, index):
-    for check_row in rows[index - 20: index + 20]:
-        check_person = PersonF1(check_row)
+def is_a_duplicate(person, people, index):
+    check_people = []
+    low = (lambda x: x if x >= 0 else 0)(index - 20)
+    high = (lambda x: x if x <= len(people) else len(people))(index + 20)
+    for i in range(low, high):
+        check_people.append(people[i])
+
+    for check_person in check_people:
         if person.id == check_person.id:
             return False
 
@@ -166,9 +212,9 @@ def is_a_duplicate(person, rows, index):
 
         # Check DOB, address, email, or mobile_phone
         if (compare(person.dob, check_person.dob) or
-                compareArrays(person.addresses, check_person.addresses) or
-                compareArrays(person.phones, check_person.phones) or
-                compareArrays(person.emails, check_person.emails)):
+                compareArrayOfDicts(person.addresses, check_person.addresses) or
+                compareArrayOfDicts(person.phones, check_person.phones) or
+                compareArrayOfDicts(person.emails, check_person.emails)):
             return True
 
     return False

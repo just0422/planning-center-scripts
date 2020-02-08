@@ -35,6 +35,7 @@ class RainbowLoggingHandler(ColorizingStreamHandler):
     level_map = {
         logging.DEBUG: (None, 'cyan', False),
         logging.INFO: (None, 'white', False),
+        logging.SUCCESS: (None, 'green', True),
         logging.WARNING: (None, 'yellow', True),
         logging.ERROR: (None, 'red', True),
         logging.CRITICAL: ('red', 'white', True),
@@ -104,7 +105,7 @@ class RainbowLoggingHandler(ColorizingStreamHandler):
 
         format = "".join(template)
 
-        who = [self.get_color("green"),
+        who = [self.get_color("blue"),
                getattr(record, "funcName", ""),
                "()",
                self.get_color("black", None, True),

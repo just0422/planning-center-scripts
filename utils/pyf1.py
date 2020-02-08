@@ -1,9 +1,10 @@
 import urllib
-import json
-import requests
+import logging
 
 from rauth import OAuth1Session, OAuth1Service
 from base64 import b64encode
+
+logger = logging.getLogger()
 
 
 class F1API(OAuth1Session):
@@ -18,8 +19,7 @@ class F1API(OAuth1Session):
         :type clientSecret: string
         :param username: FellowshipOne username
         :type username: string
-        :param password: FellowshipOne password
-        :type password: string"""
+        :param password: FellowshipOne password :type password: string"""
 
         # CT fellowshipone base URL
         self.baseUrl = "https://christny.fellowshiponeapi.com"
@@ -59,10 +59,16 @@ class F1API(OAuth1Session):
             endpoint = endpoint.replace('{{{}}}'.format(key), urlParam)
         request_url = "%s%s" % (self.baseUrl, endpoint)
 
-        return self.session.get(
+        response = self.session.get(
                 request_url,
                 header_auth=True,
                 headers={"Accept": "application/json"},
                 **kwargs
         )
+
+        if response.status_code < 300:
+            return response
+
+        logger.debug(f"Error: {response.status_code}")
+        return None
 
