@@ -7,10 +7,7 @@ import pypco
 import requests
 import streetaddress
 import sys
-
 from datetime import datetime
-
-
 pco = pypco.PCO(
         os.environ["PCO_KEY"],
         os.environ["PCO_SECRET"]
@@ -98,15 +95,16 @@ def send_person_to_pco(person_f1, person_pco):
         template['birthdate'] = person_f1.get_dob_yyyy_mm_dd_format()
 
     # Set a new person as inactive if they are new to PCO
-    if person_pco and person_pco['status'] == 'active':
+    if person_pco and person_pco['data']['attributes']['status'] == 'active':
         template['status'] = 'active'
     else:
         template['status'] = 'inactive'
 
-    # if person_f1.status in ['CTG', 'CTQ', 'CTB English', 'CTG High School', 'CTG Junior High']:
-    #    template['primary_campus_id'] = GLENDALE
-    # if person_f1.status in ['CTB', 'CTB Espanol', 'CTB Junior High', 'CTB High School']:
-    #    template['primary_campus_id'] = BUSHWICK
+    # Set campus
+    if person_f1.status in ['CTG', 'CTQ', 'CTB English', 'CTG High School', 'CTG Junior High']:
+        template['primary_campus_id'] = GLENDALE
+    if person_f1.status in ['CTB', 'CTB Espanol', 'CTB Junior High', 'CTB High School']:
+        template['primary_campus_id'] = BUSHWICK
 
     logging.debug(f"Building template for {person_f1.full_name()}")
     # Setup the payload with the build templat
@@ -118,7 +116,7 @@ def send_person_to_pco(person_f1, person_pco):
         person = None
         if person_exists:
             logging.warning(f"Updating {person_f1.full_name()}")
-            person = pco.patch(f'/people/v2/people/{person_pco["data"]["id"]}', payload)
+            person = pco.patch(f'/people/v2/people/{person_pco["data"]["id"]}?include=field_data', payload)
         else:
             logging.warning(f"Creating {person_f1.full_name()}")
             person = pco.post('/people/v2/people', payload)
@@ -167,11 +165,11 @@ def send_phone_number(id, phone_f1, person_exists):
                     return
 
         location = ""
-        if phone_type.lower() == "home phone":
+        if phone_type.lower() in "home phone":
             location = "Home"
-        if phone_type.lower() in ["mobile phone", "emergency phone"]:
+        if any(phone_type.lower() in phone for phone in ["mobile phone", "emergency phone"]):
             location = "Mobile"
-        if phone_type.lower() == "work phone":
+        if phone_type.lower() in "work phone":
             location = "Work"
 
         # If it reached here, the phone number doesn't exist
@@ -205,13 +203,13 @@ def send_email(id, email_f1, person_exists):
             # Get a list of all emails
             for email in pco.iterate(f'/people/v2/people/{id}/emails'):
                 # if any match, return
-                if email['data']['attributes']['address'] == email_f1:
+                if email['data']['attributes']['address'].lower() == email_f1.lower():
                     return
 
         location = ""
-        if email_type.lower() in ["home email", "infellowship login"]:
+        if any(email_type.lower() in email for email in ["home email", "infellowship login"]):
             location = "Home"
-        if email_type.lower() == "email":
+        if email_type.lower() in "email":
             location = "Work"
         # If it reached here, the email doesn't exist
         # Build the request
@@ -327,16 +325,17 @@ def compare_addresses(addrs_f1, addrs_pco):
     return False
 
 
-def send_attribute(person_id, f1_attribute_id, attribute, mapping):
-    logging.info("Sending attribute {attribute['attribute']['attributeGroup']['attribute']['name']} to Planning Center")
+def send_attribute(person, f1_attribute_id, attribute, mapping):
+    logging.info(f"Sending attribute {attribute['attributeGroup']['attribute']['name']} to Planning Center")
     pco_type = mapping[2]
+    person_id = person['data']['id']
 
     if pco_type == "field_data":
         value = ""
-        if attribute["start_date"]:
-            value = datetime.strptime(attribute["start_date"], '%m/%d/%y')
+        if attribute["startDate"]:
+            value = datetime.strptime(attribute["startDate"], '%Y-%m-%dT%H:%M:%S')
         else:
-            value = datetime.strptime(attribute["createdDate"], '%m/%d/%y')
+            value = datetime.strptime(attribute["createdDate"], '%Y-%m-%dT%H:%M:%S')
 
         value = value.strftime('%Y-%m-%d')
         template = {
@@ -345,4 +344,26 @@ def send_attribute(person_id, f1_attribute_id, attribute, mapping):
         }
         payload = pco.template("FieldDatum", template)
         logger.debug(payload)
-        pco.post(f'/people/v2/people/{id}/field_data', payload)
+
+        # See if field data exists in planning center
+        field_datum_id = -1
+        for field_datum in person['included']:
+            if template['field_definition_id'] == int(field_datum['relationships']['field_definition']['data']['id']):
+                field_datum_id = int(field_datum['id'])
+
+        field_definition = pco.get(f'/people/v2/field_definitions/{template["field_definition_id"]}')
+        if field_datum_id > 0:
+            logging.info(f"Updating Custom Field - {field_definition['data']['attributes']['name']}")
+            pco.patch(f'/people/v2/field_data/{field_datum_id}', payload)
+        else:
+            logging.info(f"Creating Custom Field - {field_definition['data']['attributes']['name']}")
+            pco.post(f'/people/v2/people/{person_id}/field_data', payload)
+    if pco_type == "wed_anniversary":
+        value = datetime.strptime(attribute["startDate"], '%Y-%m-%dT%H:%M:%S')
+        value = value.strftime('%Y-%m-%d')
+        template = {
+            'anniversary': value 
+        }
+
+        payload = pco.template('Person', template)
+        person = pco.patch(f'/people/v2/people/{person["data"]["id"]}', payload)

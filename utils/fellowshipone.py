@@ -20,7 +20,7 @@ f1 = F1API(
 
 class PersonF1:
     """Representation of a person from FellowshipOne"""
-    def __init__(self, person):
+    def __init__(self, person, csv_writers):
         self.error = False
         self.id = person[0]
         self.household_id = person[1]
@@ -33,19 +33,19 @@ class PersonF1:
         self.phones = []
         self.addresses = []
 
-        if not self.get_details(self.id):
+        if not self.get_details(self.id, csv_writers[0]):
             logger.info(f"Empty details for {self.id}")
             self.error = True
             return
-        self.get_communications(self.id)
-        self.get_addresses(self.id)
+        self.get_communications(self.id, csv_writers[1])
+        self.get_addresses(self.id, csv_writers[2])
 
         logger.success(f"Retrieved {self.full_name()}")
 
     def full_name(self):
         return f"{self.first_name} {self.last_name}"
 
-    def get_details(self, person_id):
+    def get_details(self, person_id, people_writer):
         logger.debug("Getting Details")
         # Get person from F1
         response = f1.get(f"/v1/People/{person_id}.json")
@@ -72,9 +72,11 @@ class PersonF1:
 
         if person["lastUpdatedDate"]:
             self.last_updated = datetime.strptime(person["lastUpdatedDate"], '%Y-%m-%dT%H:%M:%S')
+
+        people_writer.writerow([self.id, self.household_id, self.first_name, self.middle_name, self.last_name, self.goes_by_name, self.gender, self.dob, self.status, person["maritalStatus"], person["lastUpdatedDate"]])
         return True
 
-    def get_communications(self, person_id):
+    def get_communications(self, person_id, contacts_writer):
         logger.debug("Getting Communications")
         # Get communications from F1
         response = f1.get(f"/v1/People/{person_id}/Communications.json")
@@ -114,8 +116,12 @@ class PersonF1:
                     "email": communication_value,
                     "type": communication_type
                 })
+            contacts_writer.writerow([self.id, self.household_id, communication_gen_type, communication_value, communication_type])
 
-    def get_addresses(self, person_id):
+        logger.debug(f"Emails: {self.emails}")
+        logger.debug(f"Phones: {self.phones}")
+
+    def get_addresses(self, person_id, address_writer):
         logger.debug("Getting Addresses")
         # Get Addresses from F1
         response = f1.get(f"/v1/People/{person_id}/Addresses.json")
@@ -151,9 +157,13 @@ class PersonF1:
 
             self.addresses.append(address_obj)
 
-    def get_attributes(self):
-        response = f1.get("/v1/People/{self.id}/Attributes.json")
-        response.raise_for_status()
+            address_writer.writerow([self.id, self.household_id, address["address1"], address["address2"], address["address3"], address["city"], address["postalCode"], address["stProvince"]])
+
+    def get_attributes(self, attribute_writer):
+        response = f1.get(f"/v1/People/{self.id}/Attributes.json")
+        if not response:
+            logger.error(f"Error retrieving {self.full_name()}'s attributes")
+            return
 
         attributes = response.content
         attributes = attributes.decode('utf8')
@@ -165,7 +175,11 @@ class PersonF1:
 
         if not attributes["attributes"] or "attribute" not in attributes["attributes"]:
             return
-        return attributes["attirbutes"]["attribute"]
+
+        for attr in attributes["attributes"]["attribute"]:
+            attribute_writer.writerow([self.id, self.household_id, attr["@id"], attr["attributeGroup"]["name"], attr["attributeGroup"]["attribute"]["name"], attr["startDate"], attr["endDate"], attr["comment"]])
+
+        return attributes["attributes"]["attribute"]
 
     def has_a_bad_name(self):
         return (self.is_a_bad_word(self.first_name) or
@@ -194,7 +208,7 @@ class PersonF1:
         if not self.dob or len(self.dob) == 0:
             return '1900-01-01'
 
-        dob = datetime.strptime(self.dob, '%m/%d/%y')
+        dob = datetime.strptime(self.dob, '%Y-%m-%dT%H:%M:%S')
         return dob.strftime('%Y-%m-%d')
 
     def profile_is_too_old(self, limit):

@@ -106,3 +106,7 @@ venv.bak/
 # Vim temp files
 *.swp
 *.swo
+
+
+# Project specific
+out_files/

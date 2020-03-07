@@ -1,5 +1,6 @@
 #!/usr/local/bin/python3
 import argparse
+import csv
 import datetime
 import enlighten
 import logging
@@ -46,6 +47,18 @@ def main():
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
 
+    # Create an output file for each type of data
+    people_csv = open('out_files/people.csv', mode='w')
+    people_csv_writer = csv.writer(people_csv, delimiter=',')
+    contacts_csv = open('out_files/contacts.csv', mode='w')
+    contacts_csv_writer = csv.writer(contacts_csv, delimiter=',')
+    addresses_csv = open('out_files/addresses.csv', mode='w')
+    addresses_csv_writer = csv.writer(addresses_csv, delimiter=',')
+    attributes_csv = open('out_files/attributes.csv', mode='w')
+    attributes_csv_writer = csv.writer(attributes_csv, delimiter=',')
+
+    csv_writers = [people_csv_writer, contacts_csv_writer, addresses_csv_writer, attributes_csv_writer]
+
     try:
         # Connect to the database
         conn = create_connection("data_files/normal.db")
@@ -58,7 +71,7 @@ def main():
 
         # Setup Progress bar
         manager = enlighten.get_manager()
-        get_progress = manager.counter(total=len(people[1:]), desc='Getting from F1', unit='people', color="yellow")
+        get_progress = manager.counter(total=len(people[999:1003]), desc='Getting from F1', unit='people', color="yellow")
 
         # Gather Mapping for Attributes
         cursor.execute("SELECT * FROM field_mapping")
@@ -71,9 +84,9 @@ def main():
 
         people_f1 = []
         # Iterate over results
-        for person in people[1:]:
+        for person in people[999:1003]:
             # Objectify the person
-            people_f1.append(PersonF1(person))
+            people_f1.append(PersonF1(person, csv_writers))
             get_progress.update()
 
         # Setup progress bars
@@ -87,10 +100,11 @@ def main():
         old = manager.counter(desc='|- Old Profiles ---', unit='people')
         error = manager.counter(desc='|- Errors ---------', unit='people')
 
-        limit = datetime.datetime(2015, 1, 1)
+        limit = datetime.datetime(2009, 1, 1)
         # Iterate over results
         for person_f1 in people_f1:
             time.sleep(0.01)
+            logger.success("-" * 100)
             lap += 1
 
             send_progress.update()
@@ -134,23 +148,34 @@ def main():
             logger.info(f"Looking for '{person_f1.full_name()} in FellowshipOne")
             person_pco = pco.find_person(person_f1)
 
-            # Sending person to Planning Center
-            logger.info(f"Sending '{person_f1.full_name()}' to Planning Center")
-            person_pco = pco.send_person_to_pco(person_f1, person_pco)
-            logger.success(f"Sent {person_f1.full_name()} to Planning Center")
+            if person_pco:
+                # Sending person to Planning Center
+                logger.info(f"Sending '{person_f1.full_name()}' to Planning Center")
+                person_pco = pco.send_person_to_pco(person_f1, person_pco)
+                logger.success(f"Sent {person_f1.full_name()} to Planning Center")
 
-            logger.info(f"Retrieving {person_f1.first_name}'s attributes from FellowshipOne")
-            # Get attributes from FellowshipOne
-            attributes = person_f1.get_attributes()
+                logger.info(f"Retrieving {person_f1.first_name}'s attributes from FellowshipOne")
+                # Get attributes from FellowshipOne
+                attributes = person_f1.get_attributes(csv_writers[3])
 
-            logger.info(f"Sending {person_f1.first_name}'s attributes to Planning Center")
-            # Send each attribute to Planning Center
-            for attribute in attributes:
-                f1_attribute_id = attribute['@id']
+                logger.info(f"Sending {person_f1.first_name}'s attributes to Planning Center")
 
-                if f1_attribute_id in attributes_to_fields.keys():
-                    pco.send_attribute(person_pco['id'], f1_attribute_id, attribute, attributes_to_fields[f1_attribute_id])
-            logger.success(f"Sent {person_f1.first_name}'s attributes to Planning Center")
+                # Send each attribute to Planning Center
+                for attribute in attributes:
+                    f1_attribute_id = int(attribute['attributeGroup']['attribute']['@id'])
+
+                    if f1_attribute_id in attributes_to_fields.keys():
+                        pco.send_attribute(person_pco, f1_attribute_id, attribute, attributes_to_fields[f1_attribute_id])
+                logger.success(f"Sent {person_f1.first_name}'s attributes to Planning Center")
+            else:
+                # Skip people who don't exist
+                if not person_f1.gender:
+                    pronoun = 'This person'
+                elif 'f' in person_f1.gender[0].lower():
+                    pronoun = 'She'
+                else:
+                    pronoun = 'He'
+                logger.error(f"Skipping {person_f1.full_name()} -- {pronoun} does not exist in Planning Center")
     finally:
         if conn:
             conn.close()
