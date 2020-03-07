@@ -2,7 +2,6 @@ import json
 import logging
 import string
 import os
-import sys
 
 from datetime import datetime
 from .pyf1 import F1API

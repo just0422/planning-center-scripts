@@ -6,7 +6,6 @@ import phonenumbers
 import pypco
 import requests
 import streetaddress
-import sys
 from datetime import datetime
 pco = pypco.PCO(
         os.environ["PCO_KEY"],
@@ -362,7 +361,7 @@ def send_attribute(person, f1_attribute_id, attribute, mapping):
         value = datetime.strptime(attribute["startDate"], '%Y-%m-%dT%H:%M:%S')
         value = value.strftime('%Y-%m-%d')
         template = {
-            'anniversary': value 
+            'anniversary': value
         }
 
         payload = pco.template('Person', template)

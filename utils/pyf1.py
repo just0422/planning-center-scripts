@@ -71,4 +71,3 @@ class F1API(OAuth1Session):
 
         logger.debug(f"Error: {response.status_code}")
         return None
-

@@ -71,7 +71,7 @@ def main():
 
         # Setup Progress bar
         manager = enlighten.get_manager()
-        get_progress = manager.counter(total=len(people[999:1003]), desc='Getting from F1', unit='people', color="yellow")
+        get_progress = manager.counter(total=len(people), desc='Getting from F1', unit='people', color="yellow")
 
         # Gather Mapping for Attributes
         cursor.execute("SELECT * FROM field_mapping")
@@ -84,7 +84,7 @@ def main():
 
         people_f1 = []
         # Iterate over results
-        for person in people[999:1003]:
+        for person in people:
             # Objectify the person
             people_f1.append(PersonF1(person, csv_writers))
             get_progress.update()
