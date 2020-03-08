@@ -79,7 +79,6 @@ def send_person_to_pco(person_f1, person_pco):
 
     template = {
         'last_name': person_f1.last_name,
-        'gender': person_f1.gender[0],
     }
 
     # Add a 'given name' if someone has a "goes by name"
@@ -88,6 +87,10 @@ def send_person_to_pco(person_f1, person_pco):
         template['given_name'] = person_f1.first_name
     else:
         template['first_name'] = person_f1.first_name
+
+    # Add gender if it exists
+    if person_f1.gender and len(person_f1.gender) > 0:
+        template['gender'] = person_f1.gender[0]
 
     # Add a B-day if it exists
     if person_f1.dob and len(person_f1.dob) > 0:
@@ -320,13 +323,12 @@ def compare_addresses(addrs_f1, addrs_pco):
 
             if (distance < 0.5):
                 return True
-
     return False
 
 
 def send_attribute(person, f1_attribute_id, attribute, mapping):
     logging.info(f"Sending attribute {attribute['attributeGroup']['attribute']['name']} to Planning Center")
-    pco_type = mapping[2]
+    pco_type = mapping['pco_data_type']
     person_id = person['data']['id']
 
     if pco_type == "field_data":
@@ -339,7 +341,7 @@ def send_attribute(person, f1_attribute_id, attribute, mapping):
         value = value.strftime('%Y-%m-%d')
         template = {
             "value": value,
-            "field_definition_id": mapping[1]
+            "field_definition_id": mapping['pco_id']
         }
         payload = pco.template("FieldDatum", template)
         logger.debug(payload)

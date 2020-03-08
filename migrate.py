@@ -6,7 +6,6 @@ import enlighten
 import logging
 import sys
 import sqlite3
-import time
 import utils.pco as pco
 
 from sqlite3 import Error
@@ -16,6 +15,7 @@ from utils.rainbow_logger import RainbowLoggingHandler
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-d", dest="debug", action="store_true")
+parser.add_argument("-l", dest="local", action="store_true")
 
 logger = logging.getLogger()
 
@@ -62,6 +62,7 @@ def main():
     try:
         # Connect to the database
         conn = create_connection("data_files/normal.db")
+        conn.row_factory = dict_factory
 
         # Query the DB
         logger.info("Pulling data from database")
@@ -69,9 +70,37 @@ def main():
         cursor.execute("SELECT * FROM people")
         people = cursor.fetchall()
 
-        # Setup Progress bar
-        manager = enlighten.get_manager()
-        get_progress = manager.counter(total=len(people), desc='Getting from F1', unit='people', color="yellow")
+        # Gather details
+        cursor.execute("SELECT * FROM fetched_people")
+        fetched_people_details = cursor.fetchall()
+
+        # Organize person details and prep address / communication dictionaries
+        fetched_people = {}
+        fetched_communications = {}
+        fetched_addresses = {}
+        for person in fetched_people_details:
+            fetched_people[person['id']] = person
+            fetched_communications[person['id']] = []
+            fetched_addresses[person['id']] = []
+        fetched_people = None if not args.local else fetched_people
+
+        # Gather communications
+        cursor.execute("SELECT * FROM fetched_communications")
+        fetched_communications_details = cursor.fetchall()
+
+        # Organize communications
+        for comm in fetched_communications_details:
+            fetched_communications[comm['person_id']].append(comm)
+        fetched_communications = None if not args.local else fetched_communications
+
+        # Gather addresses
+        cursor.execute("SELECT * FROM fetched_addresses")
+        fetched_addresses_details = cursor.fetchall()
+
+        # Organize addresses
+        for addr in fetched_addresses_details:
+            fetched_addresses[addr['person_id']].append(addr)
+        fetched_addresses = None if not args.local else fetched_addresses
 
         # Gather Mapping for Attributes
         cursor.execute("SELECT * FROM field_mapping")
@@ -80,13 +109,21 @@ def main():
         # Organize Mappings
         attributes_to_fields = {}
         for field in field_mappings:
-            attributes_to_fields[field[0]] = field
+            attributes_to_fields[field['f1_id']] = field
+
+        # Setup Progress bar
+        manager = enlighten.get_manager()
+        get_progress = manager.counter(total=len(people), desc='Getting from F1', unit='people', color="yellow")
 
         people_f1 = []
         # Iterate over results
         for person in people:
+            person_id = int(person['id'])
+            fetched_person = fetched_people[person_id] if fetched_people and person_id in fetched_people.keys() else None
+            fetched_comm = fetched_communications[person_id] if fetched_communications and person_id in fetched_communications.keys() else None
+            fetched_addr = fetched_addresses[person_id] if fetched_addresses and person_id in fetched_addresses.keys() else None
             # Objectify the person
-            people_f1.append(PersonF1(person, csv_writers))
+            people_f1.append(PersonF1(person, csv_writers, args.local, fetched_person, fetched_comm, fetched_addr))
             get_progress.update()
 
         # Setup progress bars
@@ -94,6 +131,8 @@ def main():
         # Setup counters for metrics
         lap = 0
         valid = manager.counter(desc='|- Valid Profiles -', unit='people')
+        skipped = manager.counter(desc='|- Skipped Profiles -', unit='people')
+        updated = manager.counter(desc='|- Updated Profiles -', unit='people')
         dups = manager.counter(desc='|- Duplicates -----', unit='people')
         names = manager.counter(desc='|- Bad Names ------', unit='people')
         empty = manager.counter(desc='|- Empty Profiles -', unit='people')
@@ -103,8 +142,7 @@ def main():
         limit = datetime.datetime(2009, 1, 1)
         # Iterate over results
         for person_f1 in people_f1:
-            time.sleep(0.01)
-            logger.success("-" * 100)
+            logger.success("-" * 80)
             lap += 1
 
             send_progress.update()
@@ -149,6 +187,7 @@ def main():
             person_pco = pco.find_person(person_f1)
 
             if person_pco:
+                updated.update()
                 # Sending person to Planning Center
                 logger.info(f"Sending '{person_f1.full_name()}' to Planning Center")
                 person_pco = pco.send_person_to_pco(person_f1, person_pco)
@@ -158,10 +197,19 @@ def main():
                 # Get attributes from FellowshipOne
                 attributes = person_f1.get_attributes(csv_writers[3])
 
+                if not attributes:
+                    logger.info(f"{person_f1.first_name} has no attributes")
+                    continue
+
                 logger.info(f"Sending {person_f1.first_name}'s attributes to Planning Center")
 
                 # Send each attribute to Planning Center
                 for attribute in attributes:
+                    if 'attributeGroup' not in attribute:
+                        continue
+                    if 'attribute' not in attribute['attributeGroup']:
+                        continue
+
                     f1_attribute_id = int(attribute['attributeGroup']['attribute']['@id'])
 
                     if f1_attribute_id in attributes_to_fields.keys():
@@ -176,6 +224,7 @@ def main():
                 else:
                     pronoun = 'He'
                 logger.error(f"Skipping {person_f1.full_name()} -- {pronoun} does not exist in Planning Center")
+                skipped.update()
     finally:
         if conn:
             conn.close()
@@ -243,6 +292,13 @@ def is_a_duplicate(person, people, index):
             return True
 
     return False
+
+
+def dict_factory(cursor, row):
+    d = {}
+    for idx, col in enumerate(cursor.description):
+        d[col[0]] = row[idx]
+    return d
 
 
 if __name__ == '__main__':

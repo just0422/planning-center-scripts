@@ -19,10 +19,11 @@ f1 = F1API(
 
 class PersonF1:
     """Representation of a person from FellowshipOne"""
-    def __init__(self, person, csv_writers):
+    def __init__(self, person, csv_writers, local=False, details=None, communications=None, addresses=None):
         self.error = False
-        self.id = person[0]
-        self.household_id = person[1]
+        self.id = person['id']
+        self.household_id = person['household_id']
+        self.local = local
 
         self.first_name = ""
         self.last_name = ""
@@ -32,30 +33,31 @@ class PersonF1:
         self.phones = []
         self.addresses = []
 
-        if not self.get_details(self.id, csv_writers[0]):
+        if not self.get_details(self.id, details, csv_writers[0]):
             logger.info(f"Empty details for {self.id}")
             self.error = True
             return
-        self.get_communications(self.id, csv_writers[1])
-        self.get_addresses(self.id, csv_writers[2])
+        self.get_communications(self.id, communications, csv_writers[1])
+        self.get_addresses(self.id, addresses, csv_writers[2])
 
         logger.success(f"Retrieved {self.full_name()}")
 
     def full_name(self):
         return f"{self.first_name} {self.last_name}"
 
-    def get_details(self, person_id, people_writer):
-        logger.debug("Getting Details")
-        # Get person from F1
-        response = f1.get(f"/v1/People/{person_id}.json")
-        if not response:
-            logger.error(f"Error retrieving details from {person_id}")
-            return False
+    def get_details(self, person_id, person, people_writer):
+        if not person:
+            # Get person from F1
+            logger.info(f"Fetching person from FellowhipOne - {person_id}")
+            response = f1.get(f"/v1/People/{person_id}.json")
+            if not response:
+                logger.error(f"Error retrieving details from {person_id}")
+                return False
 
-        # Decode the request
-        person = response.content.decode('utf8')
-        person = json.loads(person)
-        person = person["person"]
+            # Decode the request
+            person = response.content.decode('utf8')
+            person = json.loads(person)
+            person = person["person"]
 
         logger.debug(person)
 
@@ -65,7 +67,7 @@ class PersonF1:
         self.goes_by_name = (person["goesByName"] or '').capitalize()
         self.gender = person["gender"]
         self.dob = person["dateOfBirth"]
-        self.status = person["status"]["name"]
+        self.status = person['status'] if self.local else person["status"]["name"]
         if person["maritalStatus"] in ["Married", "Single", "Widowed"]:
             self.marital_status = person["maritalStatus"]
 
@@ -75,35 +77,36 @@ class PersonF1:
         people_writer.writerow([self.id, self.household_id, self.first_name, self.middle_name, self.last_name, self.goes_by_name, self.gender, self.dob, self.status, person["maritalStatus"], person["lastUpdatedDate"]])
         return True
 
-    def get_communications(self, person_id, contacts_writer):
-        logger.debug("Getting Communications")
-        # Get communications from F1
-        response = f1.get(f"/v1/People/{person_id}/Communications.json")
-        if not response:
-            logger.error(f"Error retrieving {self.full_name}'s communications")
-            return
+    def get_communications(self, person_id, communicationsArr, contacts_writer):
+        if not self.local and (not communicationsArr or len(communicationsArr) == 0):
+            # Get communications from F1
+            logger.info(f"Fetching communications from FellowhipOne - {person_id}")
+            response = f1.get(f"/v1/People/{person_id}/Communications.json")
+            if not response:
+                logger.error(f"Error retrieving {self.full_name}'s communications")
+                return
 
-        # Decode the request
-        communications = response.content.decode('utf8')
-        communications = json.loads(communications)
+            # Decode the request
+            communications = response.content.decode('utf8')
+            communications = json.loads(communications)
 
-        logger.debug(communications)
+            # Check for validity
+            if not communications or "communications" not in communications:
+                return
 
-        # Check for validity
-        if not communications or "communications" not in communications:
-            return
+            if not communications["communications"] or "communication" not in communications["communications"]:
+                return
 
-        if not communications["communications"] or "communication" not in communications["communications"]:
-            return
+            # Pull out the array
+            communicationsArr = communications["communications"]["communication"]
 
-        # Pull out the array
-        communicationsArr = communications["communications"]["communication"]
+        logger.debug(communicationsArr)
 
         # Add each communication
         for communication in communicationsArr:
             communication_gen_type = communication["communicationGeneralType"]
             communication_value = communication["communicationValue"]
-            communication_type = communication["communicationType"]["name"]
+            communication_type = communication["communicationType"] if self.local else communication["communicationType"]["name"]
 
             if communication_gen_type == "Telephone":
                 self.phones.append({
@@ -120,29 +123,31 @@ class PersonF1:
         logger.debug(f"Emails: {self.emails}")
         logger.debug(f"Phones: {self.phones}")
 
-    def get_addresses(self, person_id, address_writer):
-        logger.debug("Getting Addresses")
-        # Get Addresses from F1
-        response = f1.get(f"/v1/People/{person_id}/Addresses.json")
-        if not response:
-            logger.error(f"Error retrieving {self.full_name}'s addresses")
-            return
+    def get_addresses(self, person_id, addressesArr, address_writer):
+        if not addressesArr or len(addressesArr) == 0:
+            # Get communications from F1
+            logger.debug("Getting Addresses")
+            # Get Addresses from F1
+            response = f1.get(f"/v1/People/{person_id}/Addresses.json")
+            if not response:
+                logger.error(f"Error retrieving {self.full_name}'s addresses")
+                return
 
-        # Decode the request
-        addresses = response.content.decode('utf8')
-        addresses = json.loads(addresses)
+            # Decode the request
+            addresses = response.content.decode('utf8')
+            addresses = json.loads(addresses)
 
-        # Check for validity
-        if not addresses or "addresses" not in addresses:
-            return
+            # Check for validity
+            if not addresses or "addresses" not in addresses:
+                return
 
-        if not addresses["addresses"] or "address" not in addresses["addresses"]:
-            return
+            if not addresses["addresses"] or "address" not in addresses["addresses"]:
+                return
 
-        # Pull out the array
-        addressesArr = addresses["addresses"]["address"]
+            # Pull out the array
+            addressesArr = addresses["addresses"]["address"]
 
-        logger.debug(addresses)
+        logger.debug(addressesArr)
 
         # Add each address
         for address in addressesArr:
