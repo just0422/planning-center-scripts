@@ -1,5 +1,6 @@
 import logging
 import json
+import Levenshtein
 import math
 import os
 import phonenumbers
@@ -22,10 +23,23 @@ BUSHWICK = 35349
 
 def find_person(person):
     # These go out with every request as a baseline for finding a person
-    base_where = {
-        "where[first_name]": person.first_name,
-        "where[last_name]": person.last_name
-    }
+    base_wheres = [
+        {
+            "where[first_name]": person.first_name,
+            "where[last_name]": person.last_name
+        },
+        {
+            "where[given_name]": person.first_name,
+            "where[last_name]": person.last_name
+        },
+        {
+            "where[first_name]": person.goes_by_name,
+            "where[last_name]": person.last_name
+        },
+        {
+            "where[given_name]": person.goes_by_name,
+            "where[last_name]": person.last_name
+        } ]
 
     # Each entry added, paired with the baseline info should be unique and
     #  adequate for checking if someone already exists in PCO
@@ -45,32 +59,39 @@ def find_person(person):
         i += 1
 
     logger.debug("Searching for people")
-    people_gathered = []
+    person_gathered = None
+    done = False
     for key, value in where_queries.items():
+        if done:
+            break
+
         if len(value) == 0:
             continue
 
-        # Build where params
-        where = base_where.copy()
-        where[f"where[{key[:-1]}]"] = value
+        for base_where in base_wheres:
+            # Build where params
+            where = base_where.copy()
+            where[f"where[{key[:-1]}]"] = value
 
-        # Send the request out
-        possible_people = pco.iterate('/people/v2/people', **where)
+            first_name = where["where[first_name]"] if "where[first_name]" in where else where["where[given_name]"]
+            last_name = where["where[last_name]"]
 
-        # Add someone if no one exists
-        for person in possible_people:
-            if person not in people_gathered:
-                people_gathered.append(person)
+            if len(first_name) <= 0:
+                continue
+            logger.debug(f"Looking for {first_name} {last_name} using {value}")
 
-        # Reset the dictionary
-        where.clear()
+            # Send the request out
+            possible_people = list(pco.iterate('/people/v2/people', **where))
 
-    logger.debug(f"Found {len(people_gathered)} matches")
+            # Add someone if no one exists
+            if len(possible_people) == 1:
+                person_gathered = possible_people[0]
+                done = True
 
-    if len(people_gathered) != 1:
-        return None
+            # Reset the dictionary
+            where.clear()
 
-    return people_gathered[0]
+    return person_gathered
 
 
 def send_person_to_pco(person_f1, person_pco):
@@ -124,9 +145,7 @@ def send_person_to_pco(person_f1, person_pco):
             person = pco.post('/people/v2/people', payload)
 
     except Exception as e:
-        logging.error(f'Status: {e.status_code}')
-        logging.error(f'Message: {e.message}')
-        logging.error(f'Response: {e.response_body}')
+        logging.critical(str(e))
 
     # Extract ID and pass it to each detail function
     id = person['data']['id']
@@ -151,6 +170,7 @@ def send_phone_number(id, phone_f1, person_exists):
         phone_type = phone_f1["type"]
         phone_f1 = phone_f1["number"]
         if not phone_f1 or len(phone_f1) == 0:
+            logger.error("Invalid Phone Number")
             return
 
         # Parse the phone numbers
@@ -158,14 +178,19 @@ def send_phone_number(id, phone_f1, person_exists):
         if person_exists:
             # Get phone numbers from PCO
             for phone in pco.iterate(f'/people/v2/people/{id}/phone_numbers'):
+                logger.debug(phone)
                 # Parse the phone number
                 phone = phone['data']['attributes']['number']
                 phone_fmt = phonenumbers.parse(phone, "US")
 
                 # if any phone numbers match, return
                 if phone_fmt.national_number == phone_f1_obj.national_number:
+                    logger.warning(f"Phone Number: {phone_f1_obj.national_number} already exists in PCO")
                     return
+    except Exception as e:
+        logging.critical(str(e))
 
+    try:
         location = ""
         if phone_type.lower() in "home phone":
             location = "Home"
@@ -177,7 +202,7 @@ def send_phone_number(id, phone_f1, person_exists):
         # If it reached here, the phone number doesn't exist
         # Build a template for creation
         phone_f1_basic = str(phone_f1_obj.national_number)
-        phone_f1_formatted = f"({phone_f1_basic[0:3]}) {phone_f1_basic[3:6]}-{phone_f1_basic[6:]}"
+        phone_f1_formatted = f"{phone_f1_basic[0:3]}-{phone_f1_basic[3:6]}-{phone_f1_basic[6:]}"
         template = {
             "number": phone_f1_formatted,
             "location": location
@@ -189,9 +214,7 @@ def send_phone_number(id, phone_f1, person_exists):
         # Send the request
         return pco.post(f'/people/v2/people/{id}/phone_numbers', payload)
     except Exception as e:
-        logging.error(f'Status: {e.status_code}')
-        logging.error(f'Message: {e.message}')
-        logging.error(f'Response: {e.response_body}')
+        logging.critical(str(e))
 
 
 def send_email(id, email_f1, person_exists):
@@ -199,6 +222,7 @@ def send_email(id, email_f1, person_exists):
         email_type = email_f1['type']
         email_f1 = email_f1['email']
         if not email_f1 or len(email_f1) == 0:
+            logger.error("Invalid email")
             return
 
         if person_exists:
@@ -206,8 +230,12 @@ def send_email(id, email_f1, person_exists):
             for email in pco.iterate(f'/people/v2/people/{id}/emails'):
                 # if any match, return
                 if email['data']['attributes']['address'].lower() == email_f1.lower():
+                    logger.warning(f"Email: {email_f1} already exists in PCO")
                     return
+    except Exception as e:
+        logging.critical(str(e))
 
+    try:
         location = ""
         if any(email_type.lower() in email for email in ["home email", "infellowship login"]):
             location = "Home"
@@ -226,14 +254,13 @@ def send_email(id, email_f1, person_exists):
         # Add a new email
         return pco.post(f'/people/v2/people/{id}/emails', payload)
     except Exception as e:
-        logging.error(f'Status: {e.status_code}')
-        logging.error(f'Message: {e.message}')
-        logging.error(f'Response: {e.response_body}')
+        logging.critical(str(e))
 
 
 def send_address(id, address_f1, person_exists):
     try:
         if not address_f1 or len(address_f1) == 0:
+            logger.error("Invalid address")
             return
 
         if person_exists:
@@ -274,10 +301,17 @@ def send_address(id, address_f1, person_exists):
                 address_pco_data = address_pco_data.decode('utf8')
                 address_pco_data = json.loads(address_pco_data)
 
+                logging.debug(f"Comparing Address: {params_f1['street']}, {params_f1['city']}, {params_f1['state']} {params_f1['zip']}")
+                logging.debug(f"Comparing Address: {params_pco['street']}, {params_pco['city']}, {params_pco['state']} {params_pco['zip']}")
+
                 # Compare all addresses to each other. If within X miles, return
                 if compare_addresses(address_f1_data, address_pco_data):
+                    logging.warning(f"Address: {address_f1['address1']} {address_f1['address2']}, {address_f1['city']}, {address_f1['state']} {address_f1['zip']} already exists in PCO")
                     return
+    except Exception as e:
+        logging.critical(str(e))
 
+    try:
         # If it reached here, the address doesn't exist
         # Parse the planning center address and create a template
         template = {
@@ -291,16 +325,20 @@ def send_address(id, address_f1, person_exists):
 
         logging.info(f"Sending Address: {address_f1['address1']} {address_f1['address2']}, {address_f1['city']}, {address_f1['state']} {address_f1['zip']}")
         logging.debug(f"Email payload: {payload}")
+        return None
         # Add the new address to planning center
         return pco.post(f'/people/v2/people/{id}/addresses', payload)
     except Exception as e:
-        logging.error(f'Status: {e.status_code}')
-        logging.error(f'Message: {e.message}')
-        logging.error(f'Response: {e.response_body}')
+        logging.critical(str(e))
 
 
 def compare_addresses(addrs_f1, addrs_pco):
     radius = 6371  # km
+
+    distance = Levenshtein.distance(str(addrs_f1), str(addrs_pco))
+    if distance < 5:
+        logging.debug(f"Levenshtein Distance: {distance}")
+        return True
 
     for addr_f1 in addrs_f1['result']['addressMatches']:
         lat_f1 = addr_f1['coordinates']['x']
@@ -321,13 +359,14 @@ def compare_addresses(addrs_f1, addrs_pco):
             logging.debug(f"PCO Address:  {addr_pco['matchedAddress']}")
             logging.debug(f"Distance between: {distance}km")
 
-            if (distance < 0.5):
+            if distance < 0.5:
                 return True
+
     return False
 
 
-def send_attribute(person, f1_attribute_id, attribute, mapping):
-    logging.info(f"Sending attribute {attribute['attributeGroup']['attribute']['name']} to Planning Center")
+def send_attribute(person, f1_attribute_id, attribute, mapping, name):
+    logging.info(f"Accessed FellowshipOne attribute      - {attribute['attributeGroup']['attribute']['name']}")
     pco_type = mapping['pco_data_type']
     person_id = person['data']['id']
 
@@ -351,14 +390,17 @@ def send_attribute(person, f1_attribute_id, attribute, mapping):
         for field_datum in person['included']:
             if template['field_definition_id'] == int(field_datum['relationships']['field_definition']['data']['id']):
                 field_datum_id = int(field_datum['id'])
-
-        field_definition = pco.get(f'/people/v2/field_definitions/{template["field_definition_id"]}')
-        if field_datum_id > 0:
-            logging.info(f"Updating Custom Field - {field_definition['data']['attributes']['name']}")
-            pco.patch(f'/people/v2/field_data/{field_datum_id}', payload)
-        else:
-            logging.info(f"Creating Custom Field - {field_definition['data']['attributes']['name']}")
-            pco.post(f'/people/v2/people/{person_id}/field_data', payload)
+    
+        try:
+            field_definition = pco.get(f'/people/v2/field_definitions/{template["field_definition_id"]}')
+            if field_datum_id > 0:
+                logging.info(f"Updating Planning Center Custom Field - {field_definition['data']['attributes']['name']}")
+                pco.patch(f'/people/v2/field_data/{field_datum_id}', payload)
+            else:
+                logging.info(f"Creating Planning Center Custom Field - {field_definition['data']['attributes']['name']}")
+                pco.post(f'/people/v2/people/{person_id}/field_data', payload)
+        except Exception as e:
+            logging.critical(str(e))
     if pco_type == "wed_anniversary":
         value = datetime.strptime(attribute["startDate"], '%Y-%m-%dT%H:%M:%S')
         value = value.strftime('%Y-%m-%d')
@@ -366,5 +408,9 @@ def send_attribute(person, f1_attribute_id, attribute, mapping):
             'anniversary': value
         }
 
-        payload = pco.template('Person', template)
-        person = pco.patch(f'/people/v2/people/{person["data"]["id"]}', payload)
+        try:
+            payload = pco.template('Person', template)
+            logging.info(f"Sending {name}'s Wedding Anniversary to Planning Center")
+            person = pco.patch(f'/people/v2/people/{person["data"]["id"]}', payload)
+        except Exception as e:
+            logging.critical(str(e))

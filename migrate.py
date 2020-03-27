@@ -16,6 +16,8 @@ from utils.rainbow_logger import RainbowLoggingHandler
 parser = argparse.ArgumentParser()
 parser.add_argument("-d", dest="debug", action="store_true")
 parser.add_argument("-l", dest="local", action="store_true")
+parser.add_argument("-s", dest="start", type=int, default=0)
+parser.add_argument("-e", dest="end", type=int, default=-1)
 
 logger = logging.getLogger()
 
@@ -111,13 +113,16 @@ def main():
         for field in field_mappings:
             attributes_to_fields[field['f1_id']] = field
 
+        start_index = args.start
+        end_index = args.end if args.end >= 0 else len(people)
+
         # Setup Progress bar
         manager = enlighten.get_manager()
-        get_progress = manager.counter(total=len(people), desc='Getting from F1', unit='people', color="yellow")
+        get_progress = manager.counter(total=(end_index - start_index), desc='Getting from F1', unit='people', color="yellow")
 
         people_f1 = []
         # Iterate over results
-        for person in people:
+        for person in people[start_index:end_index]:
             person_id = int(person['id'])
             fetched_person = fetched_people[person_id] if fetched_people and person_id in fetched_people.keys() else None
             fetched_comm = fetched_communications[person_id] if fetched_communications and person_id in fetched_communications.keys() else None
@@ -130,14 +135,14 @@ def main():
         send_progress = manager.counter(total=len(people_f1), desc='Sending to PCO', unit='people', color="red")
         # Setup counters for metrics
         lap = 0
-        valid = manager.counter(desc='|- Valid Profiles -', unit='people')
-        skipped = manager.counter(desc='|- Skipped Profiles -', unit='people')
-        updated = manager.counter(desc='|- Updated Profiles -', unit='people')
-        dups = manager.counter(desc='|- Duplicates -----', unit='people')
-        names = manager.counter(desc='|- Bad Names ------', unit='people')
-        empty = manager.counter(desc='|- Empty Profiles -', unit='people')
-        old = manager.counter(desc='|- Old Profiles ---', unit='people')
-        error = manager.counter(desc='|- Errors ---------', unit='people')
+        valid = manager.counter(desc='|- Valid Profiles -----', unit='people')
+        skipped = manager.counter(desc='|--- Skipped Profiles -', unit='people')
+        updated = manager.counter(desc='|--- Updated Profiles -', unit='people')
+        dups = manager.counter(desc='|- Duplicates ---------', unit='people')
+        names = manager.counter(desc='|- Bad Names ----------', unit='people')
+        empty = manager.counter(desc='|- Empty Profiles -----', unit='people')
+        old = manager.counter(desc='|- Old Profiles -------', unit='people')
+        error = manager.counter(desc='|- Errors -------------', unit='people')
 
         limit = datetime.datetime(2009, 1, 1)
         # Iterate over results
@@ -183,13 +188,13 @@ def main():
 
             # Attempt to find the person in Planning Center
             #   (Returns none if they don't exist)
-            logger.info(f"Looking for '{person_f1.full_name()} in FellowshipOne")
+            logger.info(f"Looking for {person_f1.full_name()} in FellowshipOne")
             person_pco = pco.find_person(person_f1)
 
             if person_pco:
                 updated.update()
                 # Sending person to Planning Center
-                logger.info(f"Sending '{person_f1.full_name()}' to Planning Center")
+                logger.info(f"Checking for '{person_f1.full_name()}' in Planning Center")
                 person_pco = pco.send_person_to_pco(person_f1, person_pco)
                 logger.success(f"Sent {person_f1.full_name()} to Planning Center")
 
@@ -213,7 +218,7 @@ def main():
                     f1_attribute_id = int(attribute['attributeGroup']['attribute']['@id'])
 
                     if f1_attribute_id in attributes_to_fields.keys():
-                        pco.send_attribute(person_pco, f1_attribute_id, attribute, attributes_to_fields[f1_attribute_id])
+                        pco.send_attribute(person_pco, f1_attribute_id, attribute, attributes_to_fields[f1_attribute_id], person_f1.first_name)
                 logger.success(f"Sent {person_f1.first_name}'s attributes to Planning Center")
             else:
                 # Skip people who don't exist
