@@ -83,13 +83,14 @@ def find_person(person):
             # Send the request out
             possible_people = list(pco.iterate('/people/v2/people', **where))
 
+            # Reset the dictionary
+            where.clear()
+
             # Add someone if no one exists
             if len(possible_people) == 1:
                 person_gathered = possible_people[0]
                 done = True
-
-            # Reset the dictionary
-            where.clear()
+                break
 
     return person_gathered
 
@@ -162,7 +163,7 @@ def send_person_to_pco(person_f1, person_pco):
     for address in person_f1.addresses:
         send_address(id, address, person_exists)
 
-    return person
+    return person, person_exists
 
 
 def send_phone_number(id, phone_f1, person_exists):

@@ -18,12 +18,12 @@ parser.add_argument("-d", dest="debug", action="store_true")
 parser.add_argument("-l", dest="local", action="store_true")
 parser.add_argument("-s", dest="start", type=int, default=0)
 parser.add_argument("-e", dest="end", type=int, default=-1)
+parser.add_argument("-i", "--ids", nargs="+", dest="ids")
 
 logger = logging.getLogger()
 
 
 def main():
-
     args = parser.parse_args()
     if args.debug:
         logger.setLevel(logging.DEBUG)
@@ -116,13 +116,21 @@ def main():
         start_index = args.start
         end_index = args.end if args.end >= 0 else len(people)
 
+        counter_total = end_index - start_index
+        if len(args.ids) > 0:
+            counter_total = len(args.ids)
+
         # Setup Progress bar
         manager = enlighten.get_manager()
-        get_progress = manager.counter(total=(end_index - start_index), desc='Getting from F1', unit='people', color="yellow")
+        get_progress = manager.counter(total=counter_total, desc='Getting from F1', unit='people', color="yellow")
 
         people_f1 = []
         # Iterate over results
         for person in people[start_index:end_index]:
+            # Skip people if IDs are specified
+            if person['id'] not in args.ids:
+                continue
+
             person_id = int(person['id'])
             fetched_person = fetched_people[person_id] if fetched_people and person_id in fetched_people.keys() else None
             fetched_comm = fetched_communications[person_id] if fetched_communications and person_id in fetched_communications.keys() else None
@@ -136,15 +144,13 @@ def main():
         # Setup counters for metrics
         lap = 0
         valid = manager.counter(desc='|- Valid Profiles -----', unit='people')
-        skipped = manager.counter(desc='|--- Skipped Profiles -', unit='people')
+        created = manager.counter(desc='|--- Created Profiles -', unit='people')
         updated = manager.counter(desc='|--- Updated Profiles -', unit='people')
         dups = manager.counter(desc='|- Duplicates ---------', unit='people')
         names = manager.counter(desc='|- Bad Names ----------', unit='people')
         empty = manager.counter(desc='|- Empty Profiles -----', unit='people')
-        old = manager.counter(desc='|- Old Profiles -------', unit='people')
         error = manager.counter(desc='|- Errors -------------', unit='people')
 
-        limit = datetime.datetime(2009, 1, 1)
         # Iterate over results
         for person_f1 in people_f1:
             logger.success("-" * 80)
@@ -170,12 +176,6 @@ def main():
                 empty.update()
                 continue
 
-            # Check to see if the profile is too old
-            if person_f1.profile_is_too_old(limit):
-                logger.warning(f"{person_f1.full_name()} is too old")
-                old.update()
-                continue
-
             # Check for a duplicate
             if is_a_duplicate(person_f1, people_f1, lap):
                 logger.warning(f"{person_f1.full_name()} is a duplicate")
@@ -191,45 +191,38 @@ def main():
             logger.info(f"Looking for {person_f1.full_name()} in FellowshipOne")
             person_pco = pco.find_person(person_f1)
 
-            if person_pco:
+            # Sending person to Planning Center
+            logger.info(f"Checking for '{person_f1.full_name()}' in Planning Center")
+            person_pco, person_existed = pco.send_person_to_pco(person_f1, person_pco)
+            logger.success(f"Sent {person_f1.full_name()} to Planning Center")
+
+            if person_existed:
                 updated.update()
-                # Sending person to Planning Center
-                logger.info(f"Checking for '{person_f1.full_name()}' in Planning Center")
-                person_pco = pco.send_person_to_pco(person_f1, person_pco)
-                logger.success(f"Sent {person_f1.full_name()} to Planning Center")
+            else:
+                created.update()
 
-                logger.info(f"Retrieving {person_f1.first_name}'s attributes from FellowshipOne")
-                # Get attributes from FellowshipOne
-                attributes = person_f1.get_attributes(csv_writers[3])
+            logger.info(f"Retrieving {person_f1.first_name}'s attributes from FellowshipOne")
+            # Get attributes from FellowshipOne
+            attributes = person_f1.get_attributes(csv_writers[3])
 
-                if not attributes:
-                    logger.info(f"{person_f1.first_name} has no attributes")
+            if not attributes:
+                logger.info(f"{person_f1.first_name} has no attributes")
+                continue
+
+            logger.info(f"Sending {person_f1.first_name}'s attributes to Planning Center")
+
+            # Send each attribute to Planning Center
+            for attribute in attributes:
+                if 'attributeGroup' not in attribute:
+                    continue
+                if 'attribute' not in attribute['attributeGroup']:
                     continue
 
-                logger.info(f"Sending {person_f1.first_name}'s attributes to Planning Center")
+                f1_attribute_id = int(attribute['attributeGroup']['attribute']['@id'])
 
-                # Send each attribute to Planning Center
-                for attribute in attributes:
-                    if 'attributeGroup' not in attribute:
-                        continue
-                    if 'attribute' not in attribute['attributeGroup']:
-                        continue
-
-                    f1_attribute_id = int(attribute['attributeGroup']['attribute']['@id'])
-
-                    if f1_attribute_id in attributes_to_fields.keys():
-                        pco.send_attribute(person_pco, f1_attribute_id, attribute, attributes_to_fields[f1_attribute_id], person_f1.first_name)
-                logger.success(f"Sent {person_f1.first_name}'s attributes to Planning Center")
-            else:
-                # Skip people who don't exist
-                if not person_f1.gender:
-                    pronoun = 'This person'
-                elif 'f' in person_f1.gender[0].lower():
-                    pronoun = 'She'
-                else:
-                    pronoun = 'He'
-                logger.error(f"Skipping {person_f1.full_name()} -- {pronoun} does not exist in Planning Center")
-                skipped.update()
+                if f1_attribute_id in attributes_to_fields.keys():
+                    pco.send_attribute(person_pco, f1_attribute_id, attribute, attributes_to_fields[f1_attribute_id], person_f1.first_name)
+            logger.success(f"Sent {person_f1.first_name}'s attributes to Planning Center")
     finally:
         if conn:
             conn.close()
